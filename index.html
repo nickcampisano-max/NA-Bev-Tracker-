@@ -336,44 +336,38 @@ function findCol(headerKeys, candidates){
   }
   return null;
 }
-function openCsvImport(store, weekData, weekIdx){
-  const input = document.createElement('input');
-  input.type='file'; input.accept='.csv';
-  input.style.display='none';
-  document.body.appendChild(input);
-  input.onchange = (e)=>{
-    const file = e.target.files[0];
-    if(!file){ document.body.removeChild(input); return; }
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      const text = ev.target.result;
-      const rows = parseCSV(text);
-      document.body.removeChild(input);
-      if(rows.length===0){ alert('Could not read any rows from that CSV.'); return; }
-      const headerKeys = Object.keys(rows[0]);
-      const itemCol = findCol(headerKeys, ['Item']);
-      const qtyCol = findCol(headerKeys, ['Qty sold','Qty Sold']);
-      const discCol = findCol(headerKeys, ['Discount amt','Discount Amt']);
-      if(!itemCol || !qtyCol){
-        alert('Could not find "Item" and "Qty sold" columns in this CSV. Check the export format.');
-        return;
-      }
-      const matches = [], unmatched = [];
-      rows.forEach(r=>{
-        const rawName = r[itemCol];
-        if(!rawName || !rawName.trim()) return; // skip blank/total row
-        const norm = normalizeName(rawName);
-        const item = store.items.find(it=>normalizeName(it.name)===norm);
-        const qty = parseFloat(r[qtyCol])||0;
-        const disc = discCol ? (parseFloat(r[discCol])||0) : 0;
-        if(item) matches.push({item, qty, disc, rawName});
-        else unmatched.push(rawName);
-      });
-      showCsvPreview(weekData, weekIdx, matches, unmatched, file.name);
-    };
-    reader.readAsText(file);
+// Uses a persistent <label for="..."> + <input type=file> pair (see renderStoreView) instead of a
+// dynamically-created, programmatically-.click()'d input — the label-triggers-input pattern is the
+// robust cross-browser way to open a file picker from a styled button and doesn't depend on a
+// synthetic .click() call being treated as a trusted user gesture.
+function processCsvFile(file, store, weekData, weekIdx){
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const text = ev.target.result;
+    const rows = parseCSV(text);
+    if(rows.length===0){ alert('Could not read any rows from that CSV.'); return; }
+    const headerKeys = Object.keys(rows[0]);
+    const itemCol = findCol(headerKeys, ['Item']);
+    const qtyCol = findCol(headerKeys, ['Qty sold','Qty Sold']);
+    const discCol = findCol(headerKeys, ['Discount amt','Discount Amt']);
+    if(!itemCol || !qtyCol){
+      alert('Could not find "Item" and "Qty sold" columns in this CSV. Check the export format.');
+      return;
+    }
+    const matches = [], unmatched = [];
+    rows.forEach(r=>{
+      const rawName = r[itemCol];
+      if(!rawName || !rawName.trim()) return; // skip blank/total row
+      const norm = normalizeName(rawName);
+      const item = store.items.find(it=>normalizeName(it.name)===norm);
+      const qty = parseFloat(r[qtyCol])||0;
+      const disc = discCol ? (parseFloat(r[discCol])||0) : 0;
+      if(item) matches.push({item, qty, disc, rawName});
+      else unmatched.push(rawName);
+    });
+    showCsvPreview(weekData, weekIdx, matches, unmatched, file.name);
   };
-  input.click();
+  reader.readAsText(file);
 }
 function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName){
   const overlay = document.createElement('div');
@@ -539,12 +533,23 @@ function renderStoreView(app){
   const weekIdx = store._activeWeekIdx;
   const weekData = period.weeks[weekIdx];
 
-  const importBtn = document.createElement('button');
-  importBtn.className = 'btn secondary small';
-  importBtn.textContent = '📥 Import CSV';
-  importBtn.style.marginBottom = '10px';
-  importBtn.onclick = ()=> openCsvImport(store, weekData, weekIdx);
-  wcard.appendChild(importBtn);
+  const importInput = document.createElement('input');
+  importInput.type = 'file';
+  importInput.accept = '.csv';
+  importInput.id = 'csvFileInput';
+  importInput.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+  importInput.onchange = (e)=>{
+    const file = e.target.files[0];
+    if(file) processCsvFile(file, store, weekData, weekIdx);
+    importInput.value = '';
+  };
+  const importLabel = document.createElement('label');
+  importLabel.setAttribute('for', 'csvFileInput');
+  importLabel.className = 'btn secondary small';
+  importLabel.style.cssText = 'cursor:pointer; margin-bottom:10px; display:inline-block;';
+  importLabel.textContent = '📥 Import CSV';
+  wcard.appendChild(importInput);
+  wcard.appendChild(importLabel);
 
   const table = document.createElement('table');
   table.innerHTML = `<thead><tr>
