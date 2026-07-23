@@ -237,6 +237,19 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
+// Buttons are recreated on every render() (the whole #app tree is rebuilt from scratch on any
+// state change), and in some browser environments a listener attached directly to a freshly
+// created element via addEventListener doesn't reliably receive real clicks (confirmed: a
+// document-level listener sees the click, a per-element one on the same element sometimes
+// doesn't). wireClick sidesteps that entirely: it stores the handler as a plain property instead
+// of registering a DOM listener, and a single delegated listener on `document` (installed once,
+// see bottom of script) finds the clicked element and calls its stored handler directly.
+function wireClick(el, fn){
+  if(!el) return;
+  el.dataset.clickable = '';
+  el.__clickHandler = fn;
+}
+
 // ---------- Math helpers ----------
 // Returns unit-equivalent purchased quantity (servings for gallon items, cans for can items)
 function purchasedServings(item, purchasedRaw){
@@ -473,10 +486,10 @@ function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeM
   box.innerHTML = html;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
-  box.querySelector('#csvCancel').addEventListener('click', ()=> document.body.removeChild(overlay));
+  wireClick(box.querySelector('#csvCancel'), ()=> document.body.removeChild(overlay));
   const confirmBtn = box.querySelector('#csvConfirm');
   if(hasAnything){
-    confirmBtn.addEventListener('click', ()=>{
+    wireClick(confirmBtn, ()=>{
       matches.forEach(m=>{
         const cur = weekData[m.item.id];
         cur.sold = (parseFloat(cur.sold)||0) + m.qty;
@@ -518,10 +531,10 @@ function showPurchasePreview(weekData, weekIdx, matches, unmatched, fileName){
   box.innerHTML = html;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
-  box.querySelector('#pCancel').addEventListener('click', ()=> document.body.removeChild(overlay));
+  wireClick(box.querySelector('#pCancel'), ()=> document.body.removeChild(overlay));
   const confirmBtn = box.querySelector('#pConfirm');
   if(matches.length>0){
-    confirmBtn.addEventListener('click', ()=>{
+    wireClick(confirmBtn, ()=>{
       matches.forEach(m=>{
         const cur = weekData[m.item.id];
         cur.purchased = (parseFloat(cur.purchased)||0) + m.qty;
@@ -550,19 +563,19 @@ function render(){
     const b = document.createElement('button');
     b.className = 'tab' + (state.activeView==='store' && state.activeStore===key ? ' active':'');
     b.textContent = state.stores[key].name.split('—')[0].trim();
-    b.addEventListener('click', ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); });
+    wireClick(b, ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); });
     tabbar.appendChild(b);
   });
   const compareBtn = document.createElement('button');
   compareBtn.className = 'tab' + (state.activeView==='compare' ? ' active':'');
   compareBtn.textContent = '⇄ Compare Stores';
-  compareBtn.addEventListener('click', ()=>{ state.activeView='compare'; save(); render(); });
+  wireClick(compareBtn, ()=>{ state.activeView='compare'; save(); render(); });
   tabbar.appendChild(compareBtn);
 
   const settingsBtn = document.createElement('button');
   settingsBtn.className = 'tab' + (state.activeView==='settings' ? ' active':'');
   settingsBtn.textContent = '⚙ Settings';
-  settingsBtn.addEventListener('click', ()=>{ state.activeView='settings'; save(); render(); });
+  wireClick(settingsBtn, ()=>{ state.activeView='settings'; save(); render(); });
   tabbar.appendChild(settingsBtn);
 
   app.appendChild(tabbar);
@@ -580,7 +593,7 @@ function renderStoreView(app){
     card.innerHTML = `<div>No items configured for <strong>${store.name}</strong> yet.</div>
       <button class="btn" id="goSettings">Set up items in Settings</button>`;
     app.appendChild(card);
-    card.querySelector('#goSettings').addEventListener('click', ()=>{ state.activeView='settings'; save(); render(); });
+    wireClick(card.querySelector('#goSettings'), ()=>{ state.activeView='settings'; save(); render(); });
     return;
   }
   ensureActivePeriod(store);
@@ -612,7 +625,7 @@ function renderStoreView(app){
   periodSelect.onchange = ()=>{ store._activePeriodIdx = parseInt(periodSelect.value); store._activeWeekIdx=0; save(); render(); };
   pcard.querySelector('#periodName').oninput = (e)=>{ period.name = e.target.value; save(); };
   pcard.querySelector('#periodStart').oninput = (e)=>{ period.startDate = e.target.value; save(); };
-  pcard.querySelector('#newPeriodBtn').addEventListener('click', ()=>{
+  wireClick(pcard.querySelector('#newPeriodBtn'), ()=>{
     const carry = {};
     store.items.forEach(it=>{ carry[it.id] = expectedOnHand(store, period, it, 3); });
     const np = newPeriod(store.items, 'Period ' + (store.periods.length+1), '');
@@ -648,7 +661,7 @@ function renderStoreView(app){
     const b=document.createElement('button');
     b.className='weektab'+(store._activeWeekIdx===i?' active':'');
     b.textContent='Week '+(i+1);
-    b.addEventListener('click', ()=>{ store._activeWeekIdx=i; save(); render(); });
+    wireClick(b, ()=>{ store._activeWeekIdx=i; save(); render(); });
     wt.appendChild(b);
   });
   wcard.appendChild(wt);
@@ -808,7 +821,7 @@ function renderPeriodSummary(app, store, period){
   card.appendChild(tbl);
   app.appendChild(card);
 
-  card.querySelector('#copyEmailBtn').addEventListener('click', ()=>{
+  wireClick(card.querySelector('#copyEmailBtn'), ()=>{
     const text = generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted);
     navigator.clipboard.writeText(text).then(()=>showToast('Email copied to clipboard')).catch(()=>{
       const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
@@ -950,13 +963,13 @@ function renderSettings(app){
           save();
         });
       });
-      row.querySelector('[data-remove]').addEventListener('click', ()=>{
+      wireClick(row.querySelector('[data-remove]'), ()=>{
         store.items.splice(idx,1); save(); render();
       });
       list.appendChild(row);
     });
     card.appendChild(list);
-    card.querySelector('[data-add]').addEventListener('click', ()=>{
+    wireClick(card.querySelector('[data-add]'), ()=>{
       store.items.push({id:'item'+Date.now(), name:'New Item', unit:'can', price:0, cost:0, pourOz:null, defaultKitchen:0, kitchenNote:''});
       store.periods.forEach(p=>p.weeks.forEach(w=>{ w[store.items[store.items.length-1].id] = {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''}; }));
       save(); render();
@@ -968,7 +981,7 @@ function renderSettings(app){
   resetCard.className='card';
   resetCard.innerHTML = `<h3>Reset</h3><div class="info-note" style="margin-bottom:8px">Clears all tracked data for every store. Item configuration is kept.</div>
     <button class="btn danger small" id="resetData">Clear all weekly data</button>`;
-  resetCard.querySelector('#resetData').addEventListener('click', ()=>{
+  wireClick(resetCard.querySelector('#resetData'), ()=>{
     if(confirm('Clear all weekly/period data for every store? Item settings will be kept.')){
       Object.values(state.stores).forEach(s=>{ s.periods=[]; s._activePeriodIdx=undefined; s._activeWeekIdx=undefined; });
       save(); render();
@@ -981,6 +994,15 @@ function renderSettings(app){
 // makes the browser navigate away to display the raw file instead of doing nothing.
 window.addEventListener('dragover', (e)=> e.preventDefault());
 window.addEventListener('drop', (e)=> e.preventDefault());
+
+// Single delegated click listener backing every wireClick() button (see wireClick above). This
+// listener is attached once, to `document`, and never gets removed/recreated — unlike the
+// buttons themselves, which are torn down and rebuilt on every render(). Delegating from a
+// stable, permanent element is what makes clicks reliably register.
+document.addEventListener('click', (e)=>{
+  const el = e.target.closest('[data-clickable]');
+  if(el && typeof el.__clickHandler === 'function') el.__clickHandler(e);
+});
 
 render();
 </script>
