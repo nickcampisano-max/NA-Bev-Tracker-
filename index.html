@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NA Bev Variance Tracker</title>
+<style>
+  :root {
+    color-scheme: light;
+    --teal: #0f766e;
+    --teal-light: #ccfbf1;
+    --beige: #faf7f2;
+    --card: #ffffff;
+    --border: #e7e0d4;
+    --ink: #2b2621;
+    --muted: #7a7266;
+    --green: #15803d;
+    --green-bg: #dcfce7;
+    --yellow: #92400e;
+    --yellow-bg: #fef3c7;
+    --red: #b91c1c;
+    --red-bg: #fee2e2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--beige);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+  .tabbar { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    padding: 9px 14px; cursor: pointer; border: none; background: transparent;
+    font-size: 13.5px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+  }
+  .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+  .tab:hover { color: var(--ink); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .card h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+
+  .rowflex { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    background: var(--teal); color: #fff; border: none; border-radius: 7px; padding: 8px 14px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { opacity: .9; }
+  .btn.secondary { background: #fff; color: var(--teal); border: 1px solid var(--teal); }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn.small { padding: 5px 10px; font-size: 12px; }
+  .btn.danger { background: #fff; color: var(--red); border: 1px solid var(--red); }
+
+  .weektabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .weektab {
+    padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: #fff;
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
+  }
+  .weektab.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.8px; }
+  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .02em; }
+  td:first-child, th:first-child { text-align: left; }
+  td.left, th.left { text-align: left; }
+  tr.total-row td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: none; }
+
+  input[type=text], input[type=number] {
+    width: 68px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 6px;
+    font-size: 12.8px; text-align: right; background: #fffdf9;
+  }
+  input.wide { width: 130px; text-align: left; }
+  input:focus { outline: 2px solid var(--teal-light); border-color: var(--teal); }
+
+  .flag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11.5px; font-weight: 700; }
+  .flag.green { background: var(--green-bg); color: var(--green); }
+  .flag.yellow { background: var(--yellow-bg); color: var(--yellow); }
+  .flag.red { background: var(--red-bg); color: var(--red); }
+  .sustained { font-size: 10.5px; color: var(--red); font-weight: 700; display: block; margin-top: 2px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+  .kpi .value { font-size: 20px; font-weight: 700; }
+  .kpi .value.red { color: var(--red); }
+  .kpi .value.green { color: var(--green); }
+
+  textarea.note {
+    width: 110px; height: 30px; font-size: 11.5px; border: 1px solid var(--border); border-radius: 5px;
+    padding: 4px 5px; resize: vertical; font-family: inherit; text-align: left;
+  }
+
+  .settings-item { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .settings-item label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 2px; }
+  .settings-field { display: flex; flex-direction: column; }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty-state .btn { margin-top: 10px; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 9px 18px; border-radius: 8px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+
+  .compare-bar-wrap { height: 220px; margin-top: 8px; }
+  .info-note { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+  select { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; background: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script>
+const LS_KEY = 'nabev_tracker_v1';
+
+// ---------- Default seed data ----------
+function defaultState(){
+  return {
+    activeStore: 'central',
+    activeView: 'store', // 'store' | 'compare' | 'settings'
+    stores: {
+      central: {
+        name: 'Clever Koi — Central Phoenix',
+        subtitle: 'incl. ATP',
+        items: [
+          {id:'coke', name:'Coke', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:0, kitchenNote:''},
+          {id:'dietcoke', name:'Diet Coke', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:0, kitchenNote:''},
+          {id:'sprite', name:'Sprite', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:7, kitchenNote:'Apple dish, ~1/day'},
+          {id:'drpepper', name:'Dr Pepper', unit:'can', price:4.50, cost:0.99, pourOz:null, defaultKitchen:0, kitchenNote:''},
+          {id:'rootbeer', name:'Root Beer', unit:'can', price:4.50, cost:0.68, pourOz:null, defaultKitchen:0, kitchenNote:''},
+          {id:'lemonade', name:'Lemonade', unit:'gallon', price:4.50, cost:8.08, pourOz:6, defaultKitchen:0, kitchenNote:''}
+        ],
+        periods: []
+      },
+      gilbert: {
+        name: 'Clever Koi — Gilbert',
+        subtitle: '',
+        items: [],
+        periods: []
+      },
+      scottsdale: {
+        name: 'Fellow — Scottsdale',
+        subtitle: 'Italian',
+        items: [],
+        periods: []
+      }
+    }
+  };
+}
+
+function emptyWeek(items){
+  const w = {};
+  items.forEach(it=>{
+    w[it.id] = { purchased:0, sold:0, discount:0, kitchen: it.defaultKitchen||0, notes:'', actualCount:'' };
+  });
+  return w;
+}
+
+function newPeriod(items, name, startDate){
+  return {
+    name: name || 'Period 1',
+    startDate: startDate || '',
+    beginInv: {}, // item.id -> beginning on-hand units, entered once
+    weeks: [emptyWeek(items), emptyWeek(items), emptyWeek(items), emptyWeek(items)]
+  };
+}
+
+// ---------- State load/save ----------
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    return parsed;
+  }catch(e){ return defaultState(); }
+}
+function save(){
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+// ---------- Math helpers ----------
+// Returns unit-equivalent purchased quantity (servings for gallon items, cans for can items)
+function purchasedServings(item, purchasedRaw){
+  if(item.unit === 'gallon'){
+    return (purchasedRaw * 128) / (item.pourOz || 1);
+  }
+  return purchasedRaw;
+}
+function costPerServing(item){
+  if(item.unit === 'gallon'){
+    const servingsPerGal = 128 / (item.pourOz || 1);
+    return item.cost / servingsPerGal;
+  }
+  return item.cost;
+}
+function computeRow(item, weekData){
+  const d = weekData[item.id] || {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''};
+  const purchased = parseFloat(d.purchased) || 0;
+  const sold = parseFloat(d.sold) || 0;
+  const discount = parseFloat(d.discount) || 0;
+  const kitchen = parseFloat(d.kitchen) || 0;
+  const purchU = purchasedServings(item, purchased);
+  const comped = item.price > 0 ? discount / item.price : 0;
+  const accountedFor = sold + kitchen; // sold already includes comped units rung into POS
+  const unaccounted = Math.max(purchU - accountedFor, purchU - accountedFor); // allow negative to show over-accounted
+  const cps = costPerServing(item);
+  const unaccountedCost = unaccounted * cps;
+  const pctAccounted = purchU > 0 ? (accountedFor / purchU) * 100 : (accountedFor>0 ? 100 : 0);
+  let flag = 'green';
+  if(pctAccounted < 70) flag = 'red';
+  else if(pctAccounted < 85) flag = 'yellow';
+  return { purchased, purchU, sold, discount, comped, kitchen, accountedFor, unaccounted, unaccountedCost, pctAccounted, flag, cps,
+           actualCount: d.actualCount, notes: d.notes || '' };
+}
+
+// Expected on-hand at end of a given week index (0-3), given period beginning inventory
+function expectedOnHand(store, period, item, uptoWeekIdx){
+  let onHand = parseFloat(period.beginInv[item.id]) || 0;
+  for(let w=0; w<=uptoWeekIdx; w++){
+    const r = computeRow(item, period.weeks[w]);
+    onHand = onHand + r.purchU - r.accountedFor;
+    // if an actual count was logged that week, it resets the running on-hand
+    const actual = parseFloat(period.weeks[w][item.id]?.actualCount);
+    if(!isNaN(actual) && period.weeks[w][item.id]?.actualCount !== ''){
+      onHand = actual;
+    }
+  }
+  return onHand;
+}
+
+function sustainedRed(period, itemId, uptoWeekIdx){
+  // true if this week AND the previous week are both red
+  if(uptoWeekIdx < 1) return false;
+  const store = getActiveStore();
+  const item = store.items.find(i=>i.id===itemId);
+  const r0 = computeRow(item, period.weeks[uptoWeekIdx]);
+  const r1 = computeRow(item, period.weeks[uptoWeekIdx-1]);
+  return r0.flag==='red' && r1.flag==='red';
+}
+
+function fmt$(n){ return '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtN(n){ return (Math.round(n*10)/10).toLocaleString('en-US',{maximumFractionDigits:1}); }
+
+// ---------- App state getters ----------
+function getActiveStore(){ return state.stores[state.activeStore]; }
+function ensureActivePeriod(store){
+  if(store.periods.length===0){
+    store.periods.push(newPeriod(store.items, 'Period 1', ''));
+    store._activePeriodIdx = 0;
+    save();
+  }
+  if(store._activePeriodIdx === undefined) store._activePeriodIdx = store.periods.length-1;
+  if(store._activeWeekIdx === undefined) store._activeWeekIdx = 0;
+}
+
+// ---------- Render ----------
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.innerHTML = `<h1>NA Bev Variance Tracker</h1><div class="sub">Weekly purchased-vs-accounted-for reconciliation, per item, per store.</div>`;
+  app.appendChild(header);
+
+  // Top-level tabs: stores + compare + settings
+  const tabbar = document.createElement('div');
+  tabbar.className = 'tabbar';
+  Object.keys(state.stores).forEach(key=>{
+    const b = document.createElement('button');
+    b.className = 'tab' + (state.activeView==='store' && state.activeStore===key ? ' active':'');
+    b.textContent = state.stores[key].name.split('—')[0].trim();
+    b.onclick = ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); };
+    tabbar.appendChild(b);
+  });
+  const compareBtn = document.createElement('button');
+  compareBtn.className = 'tab' + (state.activeView==='compare' ? ' active':'');
+  compareBtn.textContent = '⇄ Compare Stores';
+  compareBtn.onclick = ()=>{ state.activeView='compare'; save(); render(); };
+  tabbar.appendChild(compareBtn);
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.className = 'tab' + (state.activeView==='settings' ? ' active':'');
+  settingsBtn.textContent = '⚙ Settings';
+  settingsBtn.onclick = ()=>{ state.activeView='settings'; save(); render(); };
+  tabbar.appendChild(settingsBtn);
+
+  app.appendChild(tabbar);
+
+  if(state.activeView==='compare'){ renderCompare(app); return; }
+  if(state.activeView==='settings'){ renderSettings(app); return; }
+  renderStoreView(app);
+}
+
+function renderStoreView(app){
+  const store = getActiveStore();
+  if(store.items.length===0){
+    const card = document.createElement('div');
+    card.className='card empty-state';
+    card.innerHTML = `<div>No items configured for <strong>${store.name}</strong> yet.</div>
+      <button class="btn" id="goSettings">Set up items in Settings</button>`;
+    app.appendChild(card);
+    card.querySelector('#goSettings').onclick = ()=>{ state.activeView='settings'; save(); render(); };
+    return;
+  }
+  ensureActivePeriod(store);
+  const period = store.periods[store._activePeriodIdx];
+
+  // Period bar
+  const pcard = document.createElement('div');
+  pcard.className = 'card';
+  pcard.innerHTML = `<div class="rowflex">
+    <div>
+      <h3 style="margin-bottom:4px">Period</h3>
+      <div class="rowflex" style="gap:8px">
+        <select id="periodSelect"></select>
+        <input type="text" class="wide" id="periodName" value="${period.name}" placeholder="Period name">
+        <input type="text" style="width:120px" id="periodStart" value="${period.startDate}" placeholder="Start date">
+      </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn secondary small" id="newPeriodBtn">+ New Period</button>
+    </div>
+  </div>`;
+  app.appendChild(pcard);
+
+  const periodSelect = pcard.querySelector('#periodSelect');
+  store.periods.forEach((p,i)=>{
+    const o=document.createElement('option'); o.value=i; o.textContent=p.name; if(i===store._activePeriodIdx) o.selected=true;
+    periodSelect.appendChild(o);
+  });
+  periodSelect.onchange = ()=>{ store._activePeriodIdx = parseInt(periodSelect.value); store._activeWeekIdx=0; save(); render(); };
+  pcard.querySelector('#periodName').oninput = (e)=>{ period.name = e.target.value; save(); };
+  pcard.querySelector('#periodStart').oninput = (e)=>{ period.startDate = e.target.value; save(); };
+  pcard.querySelector('#newPeriodBtn').onclick = ()=>{
+    const carry = {};
+    store.items.forEach(it=>{ carry[it.id] = expectedOnHand(store, period, it, 3); });
+    const np = newPeriod(store.items, 'Period ' + (store.periods.length+1), '');
+    np.beginInv = carry;
+    store.periods.push(np);
+    store._activePeriodIdx = store.periods.length-1;
+    store._activeWeekIdx = 0;
+    save(); render();
+  };
+
+  // Beginning inventory row (period-level, optional)
+  const invCard = document.createElement('div');
+  invCard.className = 'card';
+  invCard.innerHTML = `<h3>Beginning on-hand (optional — enables count reconciliation)</h3>`;
+  const invRow = document.createElement('div');
+  invRow.style.display='flex'; invRow.style.gap='14px'; invRow.style.flexWrap='wrap';
+  store.items.forEach(it=>{
+    const f = document.createElement('div'); f.className='settings-field';
+    f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
+    const inp = document.createElement('input'); inp.type='text'; inp.value = period.beginInv[it.id] ?? '';
+    inp.oninput = (e)=>{ period.beginInv[it.id] = e.target.value; save(); };
+    f.appendChild(inp);
+    invRow.appendChild(f);
+  });
+  invCard.appendChild(invRow);
+  app.appendChild(invCard);
+
+  // Week tabs
+  const wcard = document.createElement('div');
+  wcard.className='card';
+  const wt = document.createElement('div'); wt.className='weektabs';
+  [0,1,2,3].forEach(i=>{
+    const b=document.createElement('button');
+    b.className='weektab'+(store._activeWeekIdx===i?' active':'');
+    b.textContent='Week '+(i+1);
+    b.onclick=()=>{ store._activeWeekIdx=i; save(); render(); };
+    wt.appendChild(b);
+  });
+  wcard.appendChild(wt);
+
+  const weekIdx = store._activeWeekIdx;
+  const weekData = period.weeks[weekIdx];
+
+  const table = document.createElement('table');
+  table.innerHTML = `<thead><tr>
+    <th class="left">Item</th>
+    <th>Purchased</th>
+    <th>Sold (all ch.)</th>
+    <th>Discount $</th>
+    <th>Comped*</th>
+    <th>Kitchen use</th>
+    <th>Accounted for</th>
+    <th>Unaccounted</th>
+    <th>Unacct. cost</th>
+    <th>% acct.</th>
+    <th>Flag</th>
+    <th>Count (opt.)</th>
+    <th class="left">Notes</th>
+  </tr></thead>`;
+  const tbody = document.createElement('tbody');
+
+  let totUnacctCost=0, totPurchU=0, totAccounted=0, totUnacctUnits=0;
+
+  store.items.forEach(item=>{
+    const r = computeRow(item, weekData);
+    totUnacctCost += r.unaccountedCost;
+    totPurchU += r.purchU;
+    totAccounted += r.accountedFor;
+    totUnacctUnits += r.unaccounted;
+
+    const tr = document.createElement('tr');
+    const sustained = sustainedRed(period, item.id, weekIdx);
+    tr.innerHTML = `
+      <td class="left"><strong>${item.name}</strong><div class="info-note" style="margin:0">${item.unit==='gallon' ? item.pourOz+'oz pour' : ''}</div></td>
+      <td><input type="text" data-f="purchased" value="${weekData[item.id].purchased}"></td>
+      <td><input type="text" data-f="sold" value="${weekData[item.id].sold}"></td>
+      <td><input type="text" data-f="discount" value="${weekData[item.id].discount}"></td>
+      <td>${fmtN(r.comped)}</td>
+      <td><input type="text" data-f="kitchen" value="${weekData[item.id].kitchen}"></td>
+      <td>${fmtN(r.accountedFor)}</td>
+      <td style="font-weight:700; color:${r.unaccounted>0?'var(--red)':'var(--ink)'}">${fmtN(r.unaccounted)}</td>
+      <td>${fmt$(r.unaccountedCost)}</td>
+      <td>${r.pctAccounted.toFixed(0)}%</td>
+      <td><span class="flag ${r.flag}">${r.flag==='green'?'OK':r.flag==='yellow'?'WATCH':'FLAG'}</span>${sustained?'<span class="sustained">2+ wks</span>':''}</td>
+      <td><input type="text" data-f="actualCount" value="${weekData[item.id].actualCount}" placeholder="—"></td>
+      <td class="left"><textarea class="note" data-f="notes">${weekData[item.id].notes}</textarea></td>
+    `;
+    tbody.appendChild(tr);
+
+    tr.querySelectorAll('input, textarea').forEach(inp=>{
+      inp.addEventListener('input', (e)=>{
+        weekData[item.id][e.target.dataset.f] = e.target.value;
+        save();
+        renderStoreViewInPlace();
+      });
+    });
+  });
+
+  // total row
+  const pctTot = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
+  const trTot = document.createElement('tr');
+  trTot.className='total-row';
+  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td colspan="4"></td><td>${fmtN(totAccounted)}</td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td>${pctTot.toFixed(0)}%</td><td colspan="3"></td>`;
+  tbody.appendChild(trTot);
+
+  table.appendChild(tbody);
+  wcard.appendChild(table);
+  wcard.innerHTML += `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. "Count" lets you log an actual physical cooler count for this week; entering it resets the running on-hand total used for next week's expected-on-hand check.</div>`;
+  app.appendChild(wcard);
+
+  function renderStoreViewInPlace(){
+    render();
+  }
+
+  // Period summary card
+  renderPeriodSummary(app, store, period);
+}
+
+function renderPeriodSummary(app, store, period){
+  const card = document.createElement('div');
+  card.className='card';
+  card.innerHTML = `<div class="rowflex"><h2>Period Summary — ${period.name}</h2>
+    <button class="btn secondary small" id="copyEmailBtn">📋 Copy Email</button></div>`;
+
+  let totUnacctCost=0, totUnacctUnits=0, totRetail=0, totPurchU=0, totAccounted=0;
+  const perItem = store.items.map(item=>{
+    let pu=0, ac=0, ua=0, uc=0;
+    period.weeks.forEach(w=>{
+      const r = computeRow(item, w);
+      pu+=r.purchU; ac+=r.accountedFor; ua+=r.unaccounted; uc+=r.unaccountedCost;
+    });
+    totUnacctCost+=uc; totUnacctUnits+=ua; totPurchU+=pu; totAccounted+=ac;
+    totRetail += Math.max(ua,0)*item.price;
+    return {item, pu, ac, ua, uc};
+  });
+  const margin = totRetail - Math.max(totUnacctCost,0);
+
+  const kpis = document.createElement('div');
+  kpis.className='kpi-grid';
+  kpis.innerHTML = `
+    <div class="kpi"><div class="label">Unaccounted units</div><div class="value red">${fmtN(totUnacctUnits)}</div></div>
+    <div class="kpi"><div class="label">Unaccounted cost</div><div class="value red">${fmt$(totUnacctCost)}</div></div>
+    <div class="kpi"><div class="label">Retail value if sold</div><div class="value">${fmt$(totRetail)}</div></div>
+    <div class="kpi"><div class="label">Margin never captured</div><div class="value red">${fmt$(margin)}</div></div>
+    <div class="kpi"><div class="label">% accounted, period</div><div class="value ${totPurchU>0 && totAccounted/totPurchU>=0.85 ? 'green':''}">${totPurchU>0?((totAccounted/totPurchU)*100).toFixed(0):'—'}%</div></div>
+  `;
+  card.appendChild(kpis);
+
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th>Unaccounted</th><th>% acct.</th><th>Cost</th></tr></thead>`;
+  const tb = document.createElement('tbody');
+  perItem.forEach(({item,pu,ac,ua,uc})=>{
+    const pct = pu>0 ? (ac/pu*100) : 0;
+    const flag = pct<70?'red':pct<85?'yellow':'green';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="left">${item.name}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td>${fmtN(ua)}</td><td><span class="flag ${flag}">${pct.toFixed(0)}%</span></td><td>${fmt$(uc)}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+  card.appendChild(tbl);
+  app.appendChild(card);
+
+  card.querySelector('#copyEmailBtn').onclick = ()=>{
+    const text = generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted);
+    navigator.clipboard.writeText(text).then(()=>showToast('Email copied to clipboard')).catch(()=>{
+      const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); showToast('Email copied to clipboard');
+    });
+  };
+}
+
+function generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted){
+  const pct = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
+  let lines = [];
+  lines.push(`Subject: NA Beverage Purchase vs. Sales Variance — ${store.name} (${period.name}${period.startDate ? ', starting '+period.startDate : ''})`);
+  lines.push('');
+  lines.push('Team,');
+  lines.push('');
+  lines.push(`Purchasing vs. sales on NA Bev for the period, all channels included.`);
+  lines.push('');
+  perItem.sort((a,b)=>b.uc-a.uc).forEach(({item,pu,ac,ua,uc})=>{
+    const p = pu>0 ? (ac/pu*100) : 0;
+    lines.push(`${item.name} — Purchased: ${fmtN(pu)} | Accounted for: ${fmtN(ac)} | Unaccounted: ${fmtN(ua)} (${p.toFixed(0)}%) | Cost: ${fmt$(uc)}`);
+  });
+  lines.push('');
+  lines.push(`Total — Unaccounted: ${fmtN(totUnacctUnits)} | Cost: ${fmt$(totUnacctCost)} | ${pct.toFixed(0)}% accounted for overall.`);
+  lines.push('');
+  lines.push(`"Accounted for" includes every channel and every employee comp — comped units are already rolled in, not on top of it.`);
+  lines.push('');
+  lines.push(`Bottom line: ${fmt$(totUnacctCost)} in product cost with no matching transaction. At menu price that's roughly ${fmt$(totRetail)} in sales, or ${fmt$(margin)} in gross margin never captured.`);
+  lines.push('');
+  lines.push(`This isn't about the employee meal comp perk — that stays as is. Just tightening up the numbers.`);
+  lines.push('');
+  lines.push('Next: spot-check vendor invoices, then a short physical cooler count on the flagged items.');
+  lines.push('');
+  lines.push('Nick');
+  return lines.join('\n');
+}
+
+// ---------- Compare view ----------
+function renderCompare(app){
+  const card = document.createElement('div');
+  card.className='card';
+  card.innerHTML = `<h2>Cross-Store Comparison</h2><div class="info-note" style="margin-bottom:10px">Compares each store's most recent period. Only stores with configured items and at least one week of data are shown.</div>`;
+
+  const rows = [];
+  Object.keys(state.stores).forEach(key=>{
+    const store = state.stores[key];
+    if(store.items.length===0 || store.periods.length===0) return;
+    const idx = store._activePeriodIdx ?? store.periods.length-1;
+    const period = store.periods[idx];
+    let totPurchU=0, totAccounted=0, totUnacctCost=0;
+    let worst = null;
+    store.items.forEach(item=>{
+      let pu=0, ac=0, uc=0;
+      period.weeks.forEach(w=>{ const r=computeRow(item,w); pu+=r.purchU; ac+=r.accountedFor; uc+=r.unaccountedCost; });
+      totPurchU+=pu; totAccounted+=ac; totUnacctCost+=uc;
+      const pct = pu>0 ? ac/pu*100 : 100;
+      if(!worst || pct < worst.pct) worst = {name:item.name, pct};
+    });
+    const pctAcct = totPurchU>0 ? (totAccounted/totPurchU*100) : null;
+    rows.push({name: store.name, period: period.name, pctAcct, totUnacctCost, worst});
+  });
+
+  if(rows.length===0){
+    card.innerHTML += `<div class="empty-state">No data entered yet across any store.</div>`;
+    app.appendChild(card);
+    return;
+  }
+
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th class="left">Store</th><th class="left">Period</th><th>% accounted</th><th>Unaccounted cost</th><th class="left">Worst item</th></tr></thead>`;
+  const tb = document.createElement('tbody');
+  rows.forEach(r=>{
+    const flag = r.pctAcct===null ? '' : r.pctAcct<70?'red':r.pctAcct<85?'yellow':'green';
+    tb.appendChild(Object.assign(document.createElement('tr'), {innerHTML:
+      `<td class="left">${r.name}</td><td class="left">${r.period}</td>
+       <td>${r.pctAcct===null?'—':'<span class="flag '+flag+'">'+r.pctAcct.toFixed(0)+'%</span>'}</td>
+       <td>${fmt$(r.totUnacctCost)}</td>
+       <td class="left">${r.worst ? r.worst.name+' ('+r.worst.pct.toFixed(0)+'%)' : '—'}</td>`
+    }));
+  });
+  tbl.appendChild(tb);
+  card.appendChild(tbl);
+
+  const chartWrap = document.createElement('div');
+  chartWrap.className='compare-bar-wrap';
+  const canvas = document.createElement('canvas');
+  chartWrap.appendChild(canvas);
+  card.appendChild(chartWrap);
+  app.appendChild(card);
+
+  new Chart(canvas, {
+    type:'bar',
+    data:{
+      labels: rows.map(r=>r.name.split('—')[0].trim()),
+      datasets:[{ label:'Unaccounted cost ($)', data: rows.map(r=>Math.round(r.totUnacctCost*100)/100),
+        backgroundColor:'#0f766e' }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+  });
+}
+
+// ---------- Settings ----------
+function renderSettings(app){
+  Object.keys(state.stores).forEach(key=>{
+    const store = state.stores[key];
+    const card = document.createElement('div');
+    card.className='card';
+    card.innerHTML = `<div class="rowflex"><h2>${store.name}</h2><button class="btn small secondary" data-add="${key}">+ Add item</button></div>`;
+    const list = document.createElement('div');
+    store.items.forEach((item, idx)=>{
+      const row = document.createElement('div');
+      row.className='settings-item';
+      row.innerHTML = `
+        <div class="settings-field"><label>Name</label><input type="text" class="wide" data-k="name" value="${item.name}"></div>
+        <div class="settings-field"><label>Unit</label>
+          <select data-k="unit">
+            <option value="can" ${item.unit==='can'?'selected':''}>can/unit</option>
+            <option value="gallon" ${item.unit==='gallon'?'selected':''}>gallon</option>
+          </select>
+        </div>
+        <div class="settings-field"><label>Price ($)</label><input type="text" data-k="price" value="${item.price}"></div>
+        <div class="settings-field"><label>Cost ($)</label><input type="text" data-k="cost" value="${item.cost}"></div>
+        <div class="settings-field"><label>Pour oz (gallon items)</label><input type="text" data-k="pourOz" value="${item.pourOz ?? ''}"></div>
+        <div class="settings-field"><label>Default kitchen use/wk</label><input type="text" data-k="defaultKitchen" value="${item.defaultKitchen ?? 0}"></div>
+        <button class="btn danger small" data-remove="${idx}">Remove</button>
+      `;
+      row.querySelectorAll('input,select').forEach(inp=>{
+        inp.addEventListener('change', (e)=>{
+          const k = e.target.dataset.k;
+          let v = e.target.value;
+          if(['price','cost','pourOz','defaultKitchen'].includes(k)) v = v===''? null : parseFloat(v);
+          item[k]=v;
+          save();
+        });
+      });
+      row.querySelector('[data-remove]').onclick = ()=>{
+        store.items.splice(idx,1); save(); render();
+      };
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+    card.querySelector('[data-add]').onclick = ()=>{
+      store.items.push({id:'item'+Date.now(), name:'New Item', unit:'can', price:0, cost:0, pourOz:null, defaultKitchen:0, kitchenNote:''});
+      store.periods.forEach(p=>p.weeks.forEach(w=>{ w[store.items[store.items.length-1].id] = {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''}; }));
+      save(); render();
+    };
+    app.appendChild(card);
+  });
+
+  const resetCard = document.createElement('div');
+  resetCard.className='card';
+  resetCard.innerHTML = `<h3>Reset</h3><div class="info-note" style="margin-bottom:8px">Clears all tracked data for every store. Item configuration is kept.</div>
+    <button class="btn danger small" id="resetData">Clear all weekly data</button>`;
+  resetCard.querySelector('#resetData').onclick = ()=>{
+    if(confirm('Clear all weekly/period data for every store? Item settings will be kept.')){
+      Object.values(state.stores).forEach(s=>{ s.periods=[]; s._activePeriodIdx=undefined; s._activeWeekIdx=undefined; });
+      save(); render();
+    }
+  };
+  app.appendChild(resetCard);
+}
+
+render();
+</script>
+</body>
+</html>
