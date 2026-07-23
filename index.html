@@ -1,85 +1,110 @@
 <!DOCTYPE html>
-<!-- redeploy trigger -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>NA Bev Variance Tracker</title>
 <style>
   :root {
-    color-scheme: light;
-    --teal: #0f766e;
-    --teal-light: #ccfbf1;
-    --beige: #faf7f2;
-    --card: #ffffff;
-    --border: #e7e0d4;
-    --ink: #2b2621;
-    --muted: #7a7266;
-    --green: #15803d;
-    --green-bg: #dcfce7;
-    --yellow: #92400e;
-    --yellow-bg: #fef3c7;
-    --red: #b91c1c;
-    --red-bg: #fee2e2;
+    color-scheme: dark;
+    --teal: #2dd4bf;
+    --teal-ink: #06201d;
+    --teal-glow: rgba(45,212,191,.35);
+    --bg: #0a0e13;
+    --bg2: #0d131a;
+    --card: #131a22;
+    --card2: #182029;
+    --border: #232d38;
+    --ink: #e9edf2;
+    --muted: #8996a5;
+    --green: #4ade80;
+    --green-bg: #123321;
+    --yellow: #fbbf24;
+    --yellow-bg: #3a2a08;
+    --red: #f87171;
+    --red-bg: #3a1414;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--beige);
+    background:
+      radial-gradient(1200px 700px at 15% -10%, #10202080 0%, transparent 60%),
+      radial-gradient(1000px 600px at 100% 0%, #0f2a2a70 0%, transparent 55%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+    background-attachment: fixed;
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 14px;
   }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px; }
-  h1 { font-size: 20px; margin: 0 0 2px; }
+
+  #canbg { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+  .can { position: absolute; bottom: -160px; will-change: transform; }
+  @keyframes canDrift {
+    0%   { transform: translate(0,0) rotate(-5deg); }
+    25%  { transform: translate(20px,-28vh) rotate(7deg); }
+    50%  { transform: translate(-16px,-56vh) rotate(-6deg); }
+    75%  { transform: translate(18px,-84vh) rotate(7deg); }
+    100% { transform: translate(0,-118vh) rotate(-5deg); }
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px; }
+  h1 {
+    font-size: 21px; margin: 0 0 2px; letter-spacing: -.01em;
+    background: linear-gradient(90deg, #fff, var(--teal));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
   .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
 
-  .tabbar { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 2px solid var(--border); margin-bottom: 18px; }
+  .tabbar { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
   .tab {
     padding: 9px 14px; cursor: pointer; border: none; background: transparent;
     font-size: 13.5px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
+    margin-bottom: -1px; transition: color .15s;
   }
   .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
   .tab:hover { color: var(--ink); }
 
   .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--border); border-radius: 12px;
     padding: 16px 18px; margin-bottom: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
   }
-  .card h2 { font-size: 15px; margin: 0 0 10px; }
-  .card h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; color: var(--ink); }
+  .card h3 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 
   .rowflex { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .btn {
-    background: var(--teal); color: #fff; border: none; border-radius: 7px; padding: 8px 14px;
-    font-size: 13px; font-weight: 600; cursor: pointer;
+    background: var(--teal); color: var(--teal-ink); border: none; border-radius: 7px; padding: 8px 14px;
+    font-size: 13px; font-weight: 700; cursor: pointer; transition: box-shadow .15s, transform .1s;
+    box-shadow: 0 0 0 0 var(--teal-glow);
   }
-  .btn:hover { opacity: .9; }
-  .btn.secondary { background: #fff; color: var(--teal); border: 1px solid var(--teal); }
+  .btn:hover { box-shadow: 0 0 16px 1px var(--teal-glow); transform: translateY(-1px); }
+  .btn.secondary { background: transparent; color: var(--teal); border: 1px solid var(--teal); }
   .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
   .btn.small { padding: 5px 10px; font-size: 12px; }
-  .btn.danger { background: #fff; color: var(--red); border: 1px solid var(--red); }
+  .btn.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
 
   .weektabs { display: flex; gap: 6px; margin-bottom: 14px; }
   .weektab {
-    padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: #fff;
+    padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--card2);
     cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
   }
-  .weektab.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+  .weektab.active { background: var(--teal); color: var(--teal-ink); border-color: var(--teal); }
 
   table { width: 100%; border-collapse: collapse; font-size: 12.8px; }
   th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .02em; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   td:first-child, th:first-child { text-align: left; }
   td.left, th.left { text-align: left; }
-  tr.total-row td { font-weight: 700; border-top: 2px solid var(--ink); border-bottom: none; }
+  tr.total-row td { font-weight: 700; border-top: 2px solid var(--teal); border-bottom: none; color: var(--ink); }
 
   input[type=text], input[type=number] {
     width: 68px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 6px;
-    font-size: 12.8px; text-align: right; background: #fffdf9;
+    font-size: 12.8px; text-align: right; background: var(--bg); color: var(--ink);
   }
   input.wide { width: 130px; text-align: left; }
-  input:focus { outline: 2px solid var(--teal-light); border-color: var(--teal); }
+  input:focus { outline: 2px solid var(--teal-glow); border-color: var(--teal); }
 
   .flag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11.5px; font-weight: 700; }
   .flag.green { background: var(--green-bg); color: var(--green); }
@@ -88,15 +113,15 @@
   .sustained { font-size: 10.5px; color: var(--red); font-weight: 700; display: block; margin-top: 2px; }
 
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 16px; }
-  .kpi { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kpi { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
   .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
-  .kpi .value { font-size: 20px; font-weight: 700; }
+  .kpi .value { font-size: 21px; font-weight: 700; color: var(--ink); }
   .kpi .value.red { color: var(--red); }
   .kpi .value.green { color: var(--green); }
 
   textarea.note {
     width: 110px; height: 30px; font-size: 11.5px; border: 1px solid var(--border); border-radius: 5px;
-    padding: 4px 5px; resize: vertical; font-family: inherit; text-align: left;
+    padding: 4px 5px; resize: vertical; font-family: inherit; text-align: left; background: var(--bg); color: var(--ink);
   }
 
   .settings-item { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
@@ -108,18 +133,19 @@
 
   .toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-    background: var(--ink); color: #fff; padding: 9px 18px; border-radius: 8px; font-size: 13px;
-    opacity: 0; pointer-events: none; transition: opacity .2s;
+    background: var(--teal); color: var(--teal-ink); padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    opacity: 0; pointer-events: none; transition: opacity .2s; box-shadow: 0 4px 20px var(--teal-glow);
   }
   .toast.show { opacity: 1; }
 
   .compare-bar-wrap { height: 220px; margin-top: 8px; }
   .info-note { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 
-  select { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; background: #fff; }
+  select { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; background: var(--bg); color: var(--ink); }
 </style>
 </head>
 <body>
+<div id="canbg" aria-hidden="true"></div>
 <div class="wrap" id="app"></div>
 <div class="toast" id="toast"></div>
 
@@ -610,9 +636,16 @@ function renderCompare(app){
     data:{
       labels: rows.map(r=>r.name.split('—')[0].trim()),
       datasets:[{ label:'Unaccounted cost ($)', data: rows.map(r=>Math.round(r.totUnacctCost*100)/100),
-        backgroundColor:'#0f766e' }]
+        backgroundColor:'#2dd4bf', borderRadius:6 }]
     },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ ticks:{color:'#8996a5'}, grid:{color:'rgba(255,255,255,.05)'} },
+        y:{ ticks:{color:'#8996a5'}, grid:{color:'rgba(255,255,255,.05)'} }
+      }
+    }
   });
 }
 
@@ -676,6 +709,39 @@ function renderSettings(app){
   };
   app.appendChild(resetCard);
 }
+
+// ---------- Floating can background ----------
+function canSVG(color){
+  return `<svg viewBox="0 0 60 100" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="6" width="52" height="88" rx="12" fill="#aab4bd"/>
+    <rect x="4" y="6" width="52" height="12" rx="6" fill="#8b96a1"/>
+    <rect x="4" y="82" width="52" height="12" rx="6" fill="#7c8891"/>
+    <rect x="4" y="32" width="52" height="34" fill="${color}"/>
+    <ellipse cx="30" cy="10" rx="13" ry="3.4" fill="#dfe5ea" opacity=".75"/>
+    <rect x="20" y="16" width="6" height="4" rx="1" fill="#5b656e"/>
+  </svg>`;
+}
+function spawnCans(){
+  const bg = document.getElementById('canbg');
+  if(!bg) return;
+  const colors = ['#e2231a','#0a8a3c','#6f1d2b','#c9871f','#d7dee4','#8a5a2b'];
+  const n = 12;
+  for(let i=0;i<n;i++){
+    const el = document.createElement('div');
+    el.className = 'can';
+    const size = 42 + Math.random()*56;
+    const dur = 24 + Math.random()*24;
+    el.style.left = (Math.random()*100) + '%';
+    el.style.width = size + 'px';
+    el.style.height = (size*100/60) + 'px';
+    el.style.opacity = (0.06 + Math.random()*0.09).toFixed(2);
+    el.style.animation = `canDrift ${dur}s linear infinite`;
+    el.style.animationDelay = (-Math.random()*dur) + 's';
+    el.innerHTML = canSVG(colors[i % colors.length]);
+    bg.appendChild(el);
+  }
+}
+spawnCans();
 
 render();
 </script>
