@@ -766,7 +766,11 @@ function renderStoreView(app){
 
   table.appendChild(tbody);
   wcard.appendChild(table);
-  wcard.innerHTML += `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. "Count" lets you log an actual physical cooler count for this week; entering it resets the running on-hand total used for next week's expected-on-hand check.</div>`;
+  // insertAdjacentHTML, not innerHTML +=: the latter re-serializes and reparses every existing
+  // child of wcard (including the week tab buttons wired up above), which silently destroys the
+  // click handlers wireClick just attached to them. This was the actual cause of week-switching
+  // not working — not a browser quirk, a bug in this line.
+  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. "Count" lets you log an actual physical cooler count for this week; entering it resets the running on-hand total used for next week's expected-on-hand check.</div>`);
   app.appendChild(wcard);
 
   function renderStoreViewInPlace(){
@@ -884,7 +888,7 @@ function renderCompare(app){
   });
 
   if(rows.length===0){
-    card.innerHTML += `<div class="empty-state">No data entered yet across any store.</div>`;
+    card.insertAdjacentHTML('beforeend', `<div class="empty-state">No data entered yet across any store.</div>`);
     app.appendChild(card);
     return;
   }
