@@ -164,7 +164,7 @@ function defaultState(){
   const centralItems = [
     {id:'coke', name:'Coke', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:0, kitchenNote:''},
     {id:'dietcoke', name:'Diet Coke', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:0, kitchenNote:''},
-    {id:'sprite', name:'Sprite', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:7, kitchenNote:'Apple dish, ~1/day'},
+    {id:'sprite', name:'Sprite', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:0, kitchenNote:'Apple dish, ~1/day — comped by manager at POS already, so it shows up in Sold via the discount, not tracked separately as Kitchen use'},
     {id:'drpepper', name:'Dr Pepper', unit:'can', price:4.50, cost:0.99, pourOz:null, defaultKitchen:0, kitchenNote:''},
     {id:'rootbeer', name:'Root Beer', unit:'can', price:4.50, cost:0.68, pourOz:null, defaultKitchen:0, kitchenNote:''},
     {id:'lemonade', name:'Lemonade', unit:'gallon', price:4.50, cost:8.08, pourOz:6, defaultKitchen:0, kitchenNote:'',
@@ -224,8 +224,32 @@ function load(){
     const raw = localStorage.getItem(LS_KEY);
     if(!raw) return defaultState();
     const parsed = JSON.parse(raw);
+    migrateItemConfig(parsed);
     return parsed;
   }catch(e){ return defaultState(); }
+}
+// Saved state in localStorage is whatever shape it was the last time save() ran — it does NOT
+// pick up new fields added to an item's definition in defaultState() afterward (e.g. adding
+// Lemonade's `recipeUsage` link here later didn't retroactively add it to a browser's
+// already-saved Lemonade item, which silently broke Arnold Palmer recipe matching for anyone
+// who'd already used the app before that feature shipped). This backfills any default-item
+// config key that's missing on a saved item, matched by id, without touching keys the saved
+// item already has (so user edits like a changed price are never overwritten).
+function migrateItemConfig(parsed){
+  if(!parsed || !parsed.stores) return;
+  const defaults = defaultState();
+  Object.keys(parsed.stores).forEach(storeKey=>{
+    const savedStore = parsed.stores[storeKey];
+    const defaultStore = defaults.stores[storeKey];
+    if(!savedStore || !defaultStore || !Array.isArray(savedStore.items)) return;
+    savedStore.items.forEach(savedItem=>{
+      const defaultItem = defaultStore.items.find(it=>it.id===savedItem.id);
+      if(!defaultItem) return;
+      Object.keys(defaultItem).forEach(key=>{
+        if(savedItem[key] === undefined) savedItem[key] = defaultItem[key];
+      });
+    });
+  });
 }
 function save(){
   localStorage.setItem(LS_KEY, JSON.stringify(state));
