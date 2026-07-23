@@ -167,7 +167,8 @@ function defaultState(){
     {id:'sprite', name:'Sprite', unit:'can', price:4.50, cost:0.96, pourOz:null, defaultKitchen:7, kitchenNote:'Apple dish, ~1/day'},
     {id:'drpepper', name:'Dr Pepper', unit:'can', price:4.50, cost:0.99, pourOz:null, defaultKitchen:0, kitchenNote:''},
     {id:'rootbeer', name:'Root Beer', unit:'can', price:4.50, cost:0.68, pourOz:null, defaultKitchen:0, kitchenNote:''},
-    {id:'lemonade', name:'Lemonade', unit:'gallon', price:4.50, cost:8.08, pourOz:6, defaultKitchen:0, kitchenNote:''}
+    {id:'lemonade', name:'Lemonade', unit:'gallon', price:4.50, cost:8.08, pourOz:6, defaultKitchen:0, kitchenNote:'',
+     recipeUsage:[{matchName:'Arnold Palmer', ozPerUnit:4}]}
   ];
   // Period 8 (Jul 6 – Aug 2, 2026) beginning on-hand = Period 7's 7/5/26 ending count.
   const centralP8 = newPeriod(centralItems, 'Period 8 (Jul 6 – Aug 2)', '2026-07-06');
@@ -391,17 +392,32 @@ function processAnyCsvFile(file, store, weekData, weekIdx){
     const unitsCol   = findCol(headerKeys, ['Purchased Units']);
 
     if(itemCol && qtySoldCol){
-      const matches = [], unmatched = [];
+      const matches = [], unmatched = [], recipeMatches = [];
       rows.forEach(r=>{
         const rawName = r[itemCol];
         if(!rawName || !rawName.trim()) return; // skip blank/total row
-        const item = matchItemByName(store, rawName);
         const qty = parseFloat(r[qtySoldCol])||0;
         const disc = discCol ? (parseFloat(r[discCol])||0) : 0;
+        // Recipe-linked items (e.g. Arnold Palmer, which isn't sold on its own but consumes
+        // lemonade as an ingredient) aren't tracked directly — they feed a Kitchen-use addition
+        // on whichever tracked item lists them, instead of being matched/unmatched themselves.
+        const norm = normalizeName(rawName);
+        let recipeHit = null;
+        store.items.forEach(it=>{
+          (it.recipeUsage||[]).forEach(ru=>{
+            if(normalizeName(ru.matchName)===norm) recipeHit = {item: it, ozPerUnit: ru.ozPerUnit};
+          });
+        });
+        if(recipeHit){
+          const servings = recipeHit.item.pourOz ? (qty*recipeHit.ozPerUnit)/recipeHit.item.pourOz : qty*recipeHit.ozPerUnit;
+          recipeMatches.push({item: recipeHit.item, sourceName: rawName, sourceQty: qty, addedServings: servings});
+          return;
+        }
+        const item = matchItemByName(store, rawName);
         if(item) matches.push({item, qty, disc, rawName});
         else unmatched.push(rawName);
       });
-      showCsvPreview(weekData, weekIdx, matches, unmatched, file.name);
+      showCsvPreview(weekData, weekIdx, matches, unmatched, file.name, recipeMatches);
     } else if(productCol && unitsCol){
       const matches = [], unmatched = [];
       rows.forEach(r=>{
@@ -419,7 +435,8 @@ function processAnyCsvFile(file, store, weekData, weekIdx){
   };
   reader.readAsText(file);
 }
-function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName){
+function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeMatches){
+  recipeMatches = recipeMatches || [];
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;';
   const box = document.createElement('div');
@@ -437,25 +454,41 @@ function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName){
     });
     html += `</tbody></table>`;
   }
+  if(recipeMatches.length){
+    html += `<h3 style="margin-top:16px">Recipe use detected</h3>`;
+    html += `<div class="info-note" style="margin-bottom:8px">These aren't tracked items themselves, but they use a tracked item as an ingredient — adding to Kitchen use instead of Sold.</div>`;
+    html += `<table><thead><tr><th class="left">Source (CSV)</th><th>Qty sold</th><th class="left">Adds to</th><th>Current kitchen</th><th>New kitchen</th></tr></thead><tbody>`;
+    recipeMatches.forEach(m=>{
+      const cur = weekData[m.item.id];
+      const curK = parseFloat(cur.kitchen)||0;
+      html += `<tr><td class="left">${m.sourceName}</td><td>${fmtN(m.sourceQty)}</td><td class="left">${m.item.name}</td><td>${fmtN(curK)}</td><td style="font-weight:700">${fmtN(curK+m.addedServings)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
   if(unmatched.length){
     html += `<div class="info-note" style="margin-top:10px;color:var(--yellow)">Unmatched CSV rows (not imported — check item name spelling, or these aren't tracked items): ${unmatched.join(', ')}</div>`;
   }
-  html += `<div class="rowflex" style="margin-top:16px"><button class="btn ghost" id="csvCancel">Cancel</button><button class="btn" id="csvConfirm" ${matches.length===0?'disabled':''}>Add to Week ${weekIdx+1}</button></div>`;
+  const hasAnything = matches.length>0 || recipeMatches.length>0;
+  html += `<div class="rowflex" style="margin-top:16px"><button class="btn ghost" id="csvCancel">Cancel</button><button class="btn" id="csvConfirm" ${hasAnything?'':'disabled'}>Add to Week ${weekIdx+1}</button></div>`;
   box.innerHTML = html;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   box.querySelector('#csvCancel').onclick = ()=> document.body.removeChild(overlay);
   const confirmBtn = box.querySelector('#csvConfirm');
-  if(matches.length>0){
+  if(hasAnything){
     confirmBtn.onclick = ()=>{
       matches.forEach(m=>{
         const cur = weekData[m.item.id];
         cur.sold = (parseFloat(cur.sold)||0) + m.qty;
         cur.discount = (parseFloat(cur.discount)||0) + m.disc;
       });
+      recipeMatches.forEach(m=>{
+        const cur = weekData[m.item.id];
+        cur.kitchen = (parseFloat(cur.kitchen)||0) + m.addedServings;
+      });
       save();
       document.body.removeChild(overlay);
-      showToast('Imported '+matches.length+' item(s) into Week '+(weekIdx+1));
+      showToast('Imported into Week '+(weekIdx+1));
       render();
     };
   }
