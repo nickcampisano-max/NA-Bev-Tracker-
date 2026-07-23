@@ -145,9 +145,10 @@
     width: fit-content;
   }
   .csv-dropzone:hover { border-color: var(--teal); color: var(--ink); }
-  .csv-dropzone.dragover { border-color: var(--teal); background: var(--teal-glow); color: var(--ink); }
   .csv-dropzone .csv-icon { font-size: 16px; }
   .csv-dropzone .csv-sub { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+  .card.csv-dragover { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal-glow); }
+  .card.csv-dragover .csv-dropzone { border-color: var(--teal); background: var(--teal-glow); color: var(--ink); }
 </style>
 </head>
 <body>
@@ -563,16 +564,22 @@ function renderStoreView(app){
   importLabel.setAttribute('for', 'csvFileInput');
   importLabel.className = 'csv-dropzone';
   importLabel.innerHTML = `<span class="csv-icon">📥</span><span>Drag CSV here or click to import <span class="csv-sub">— Week ${weekIdx+1}</span></span>`;
-  importLabel.addEventListener('dragover', (e)=>{ e.preventDefault(); e.stopPropagation(); importLabel.classList.add('dragover'); });
-  importLabel.addEventListener('dragleave', (e)=>{ e.preventDefault(); e.stopPropagation(); importLabel.classList.remove('dragover'); });
-  importLabel.addEventListener('drop', (e)=>{
-    e.preventDefault(); e.stopPropagation();
-    importLabel.classList.remove('dragover');
+  wcard.appendChild(importInput);
+  wcard.appendChild(importLabel);
+
+  // The whole card is the drop target (not just the small dashed box) so an imprecise drop still
+  // lands correctly, and a window-level dragover/drop guard stops the browser's default
+  // navigate-to-file behavior if a drop ever lands outside it.
+  wcard.addEventListener('dragover', (e)=>{ e.preventDefault(); wcard.classList.add('csv-dragover'); });
+  wcard.addEventListener('dragleave', (e)=>{
+    if(!wcard.contains(e.relatedTarget)) wcard.classList.remove('csv-dragover');
+  });
+  wcard.addEventListener('drop', (e)=>{
+    e.preventDefault();
+    wcard.classList.remove('csv-dragover');
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
     if(file) processCsvFile(file, store, weekData, weekIdx);
   });
-  wcard.appendChild(importInput);
-  wcard.appendChild(importLabel);
 
   const table = document.createElement('table');
   table.innerHTML = `<thead><tr>
@@ -861,6 +868,11 @@ function renderSettings(app){
   };
   app.appendChild(resetCard);
 }
+
+// Safety net: without this, dropping a file anywhere on the page outside an active dropzone
+// makes the browser navigate away to display the raw file instead of doing nothing.
+window.addEventListener('dragover', (e)=> e.preventDefault());
+window.addEventListener('drop', (e)=> e.preventDefault());
 
 render();
 </script>

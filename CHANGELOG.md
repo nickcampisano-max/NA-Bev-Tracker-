@@ -12,6 +12,7 @@ All notable changes to the NA Bev Weekly Variance Tracker are documented here.
 
 ### Fixed
 - **Import CSV button doing nothing on click** — the original implementation created a hidden file input and triggered it via a scripted `.click()`, which some browsers silently block for file inputs as a security measure. Replaced with a native `<label for>` + `<input type=file>` pair, the standard cross-browser-safe pattern for custom-styled upload buttons.
+- **Drag-and-drop not registering** — the drop target was only the small dashed box, so a slightly imprecise drop landed outside it and the browser's default behavior (navigate away to display the raw file) fired instead of the importer. The whole week card is now the drop target, and a window-level dragover/drop guard prevents that default navigation anywhere on the page.
 
 ### Removed
 - **Floating soda-can background animation** — added briefly as part of the dark theme redesign, then removed per request. Dark theme kept, decorative can graphics/animation fully stripped out.
