@@ -168,7 +168,7 @@ function defaultState(){
     {id:'drpepper', name:'Dr Pepper', unit:'can', price:4.50, cost:0.99, pourOz:null, defaultKitchen:0, kitchenNote:''},
     {id:'rootbeer', name:'Root Beer', unit:'can', price:4.50, cost:0.68, pourOz:null, defaultKitchen:0, kitchenNote:''},
     {id:'lemonade', name:'Lemonade', unit:'gallon', price:4.50, cost:8.08, pourOz:6, defaultKitchen:0, kitchenNote:'',
-     recipeUsage:[{matchName:'Arnold Palmer', ozPerUnit:4}]}
+     recipeUsage:[{matchName:'Arnold Palmer', ozPerUnit:4, addsTo:'sold'}]}
   ];
   // Period 8 (Jul 6 – Aug 2, 2026) beginning on-hand = Period 7's 7/5/26 ending count.
   const centralP8 = newPeriod(centralItems, 'Period 8 (Jul 6 – Aug 2)', '2026-07-06');
@@ -289,7 +289,15 @@ function costPerServing(item){
   }
   return item.cost;
 }
-function computeRow(item, weekData){
+// carryIn = stock already on hand entering this week (beginning inventory rolled forward through
+// prior weeks' purchased-vs-accounted flow — see balanceEnteringWeek). Defaults to 0, which
+// reproduces the old pure this-week-only Purchased-vs-Sold check; callers that aggregate across a
+// whole period (Period Summary, Compare Stores, the email export) intentionally omit it, since
+// the correct period-level total is still the sum of each week's own flow, not a running balance.
+// The live per-week table passes carryIn so an item that's fully stocked from a prior delivery and
+// simply wasn't purchased again this week doesn't show a false-alarm negative/red flag.
+function computeRow(item, weekData, carryIn){
+  carryIn = carryIn || 0;
   const d = weekData[item.id] || {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''};
   const purchased = parseFloat(d.purchased) || 0;
   const sold = parseFloat(d.sold) || 0;
@@ -298,9 +306,15 @@ function computeRow(item, weekData){
   const purchU = purchasedServings(item, purchased);
   const comped = item.price > 0 ? discount / item.price : 0;
   const accountedFor = sold + kitchen; // sold already includes comped units rung into POS
-  const unaccounted = Math.max(purchU - accountedFor, purchU - accountedFor); // allow negative to show over-accounted
+  const available = carryIn + purchU; // what could have been sold this week: prior stock + new purchases
+  const unaccounted = available - accountedFor; // allow negative to show over-accounted
   const cps = costPerServing(item);
   const unaccountedCost = unaccounted * cps;
+  // % accounted and the flag stay anchored to this week's Purchased alone (not carryIn) — that's
+  // the "is what we bought this week showing up as sold" check, and it already special-cases
+  // purchU===0 as 100%/green rather than treating a no-purchase week as a red flag. carryIn only
+  // changes the raw Unaccounted number/cost above, so a fully-stocked item with no purchase this
+  // week shows an honest surplus instead of a scary negative, without changing how the flag reads.
   const pctAccounted = purchU > 0 ? (accountedFor / purchU) * 100 : (accountedFor>0 ? 100 : 0);
   let flag = 'green';
   if(pctAccounted < 70) flag = 'red';
@@ -309,16 +323,27 @@ function computeRow(item, weekData){
            actualCount: d.actualCount, notes: d.notes || '' };
 }
 
+// Stock on hand entering a given week index (0-3): beginning inventory for week 0, or the running
+// expected on-hand carried out of the prior week otherwise. Both this and expectedOnHand work in
+// serving-equivalent units throughout (matching purchU/accountedFor), so Beginning On-Hand and
+// Count — entered in the item's native unit, e.g. gallons for Lemonade — are converted the same
+// way Purchased is via purchasedServings(). Mixing raw gallons into a servings-based running total
+// would silently understate carryIn for any gallon item.
+function balanceEnteringWeek(store, period, item, weekIdx){
+  if(weekIdx <= 0) return purchasedServings(item, parseFloat(period.beginInv[item.id]) || 0);
+  return expectedOnHand(store, period, item, weekIdx-1);
+}
+
 // Expected on-hand at end of a given week index (0-3), given period beginning inventory
 function expectedOnHand(store, period, item, uptoWeekIdx){
-  let onHand = parseFloat(period.beginInv[item.id]) || 0;
+  let onHand = purchasedServings(item, parseFloat(period.beginInv[item.id]) || 0);
   for(let w=0; w<=uptoWeekIdx; w++){
     const r = computeRow(item, period.weeks[w]);
     onHand = onHand + r.purchU - r.accountedFor;
     // if an actual count was logged that week, it resets the running on-hand
     const actual = parseFloat(period.weeks[w][item.id]?.actualCount);
     if(!isNaN(actual) && period.weeks[w][item.id]?.actualCount !== ''){
-      onHand = actual;
+      onHand = purchasedServings(item, actual);
     }
   }
   return onHand;
@@ -329,8 +354,10 @@ function sustainedRed(period, itemId, uptoWeekIdx){
   if(uptoWeekIdx < 1) return false;
   const store = getActiveStore();
   const item = store.items.find(i=>i.id===itemId);
-  const r0 = computeRow(item, period.weeks[uptoWeekIdx]);
-  const r1 = computeRow(item, period.weeks[uptoWeekIdx-1]);
+  // Uses the same carry-in-aware flag as the on-screen row (see computeRow), so this badge never
+  // disagrees with what the Flag column itself is showing for those two weeks.
+  const r0 = computeRow(item, period.weeks[uptoWeekIdx], balanceEnteringWeek(store, period, item, uptoWeekIdx));
+  const r1 = computeRow(item, period.weeks[uptoWeekIdx-1], balanceEnteringWeek(store, period, item, uptoWeekIdx-1));
   return r0.flag==='red' && r1.flag==='red';
 }
 
@@ -435,19 +462,23 @@ function processAnyCsvFile(file, store, weekData, weekIdx){
         if(!rawName || !rawName.trim()) return; // skip blank/total row
         const qty = parseFloat(r[qtySoldCol])||0;
         const disc = discCol ? (parseFloat(r[discCol])||0) : 0;
-        // Recipe-linked items (e.g. Arnold Palmer, which isn't sold on its own but consumes
-        // lemonade as an ingredient) aren't tracked directly — they feed a Kitchen-use addition
-        // on whichever tracked item lists them, instead of being matched/unmatched themselves.
+        // Recipe-linked items (e.g. Arnold Palmer, which isn't rung in as "Lemonade" but is a
+        // guest sale that consumes lemonade as an ingredient) aren't tracked directly — they feed
+        // an addition on whichever tracked item lists them, instead of being matched/unmatched
+        // themselves. `addsTo` controls whether that addition counts as a guest Sold (the default —
+        // most recipe links are drinks guests order) or internal Kitchen use (e.g. a recipe that
+        // uses the item but isn't itself sold to a guest).
         const norm = normalizeName(rawName);
         let recipeHit = null;
         store.items.forEach(it=>{
           (it.recipeUsage||[]).forEach(ru=>{
-            if(normalizeName(ru.matchName)===norm) recipeHit = {item: it, ozPerUnit: ru.ozPerUnit};
+            if(normalizeName(ru.matchName)===norm) recipeHit = {item: it, ozPerUnit: ru.ozPerUnit, addsTo: ru.addsTo || 'sold'};
           });
         });
         if(recipeHit){
-          const servings = recipeHit.item.pourOz ? (qty*recipeHit.ozPerUnit)/recipeHit.item.pourOz : qty*recipeHit.ozPerUnit;
-          recipeMatches.push({item: recipeHit.item, sourceName: rawName, sourceQty: qty, addedServings: servings});
+          const rawServings = recipeHit.item.pourOz ? (qty*recipeHit.ozPerUnit)/recipeHit.item.pourOz : qty*recipeHit.ozPerUnit;
+          const servings = Math.round(rawServings*10)/10;
+          recipeMatches.push({item: recipeHit.item, sourceName: rawName, sourceQty: qty, addedServings: servings, addsTo: recipeHit.addsTo});
           return;
         }
         const item = matchItemByName(store, rawName);
@@ -493,12 +524,13 @@ function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeM
   }
   if(recipeMatches.length){
     html += `<h3 style="margin-top:16px">Recipe use detected</h3>`;
-    html += `<div class="info-note" style="margin-bottom:8px">These aren't tracked items themselves, but they use a tracked item as an ingredient — adding to Kitchen use instead of Sold.</div>`;
-    html += `<table><thead><tr><th class="left">Source (CSV)</th><th>Qty sold</th><th class="left">Adds to</th><th>Current kitchen</th><th>New kitchen</th></tr></thead><tbody>`;
+    html += `<div class="info-note" style="margin-bottom:8px">These aren't tracked items themselves, but they're made using a tracked item as an ingredient — adding to that item's Sold (a guest ordered it, just under a different name) or Kitchen use (an internal, non-guest use), depending on the item.</div>`;
+    html += `<table><thead><tr><th class="left">Source (CSV)</th><th>Qty sold</th><th class="left">Adds to</th><th class="left">As</th><th>Current</th><th>New</th></tr></thead><tbody>`;
     recipeMatches.forEach(m=>{
       const cur = weekData[m.item.id];
-      const curK = parseFloat(cur.kitchen)||0;
-      html += `<tr><td class="left">${m.sourceName}</td><td>${fmtN(m.sourceQty)}</td><td class="left">${m.item.name}</td><td>${fmtN(curK)}</td><td style="font-weight:700">${fmtN(curK+m.addedServings)}</td></tr>`;
+      const curVal = parseFloat(cur[m.addsTo])||0;
+      const label = m.addsTo === 'sold' ? 'Sold' : 'Kitchen use';
+      html += `<tr><td class="left">${m.sourceName}</td><td>${fmtN(m.sourceQty)}</td><td class="left">${m.item.name}</td><td class="left">${label}</td><td>${fmtN(curVal)}</td><td style="font-weight:700">${fmtN(curVal+m.addedServings)}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -521,7 +553,7 @@ function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeM
       });
       recipeMatches.forEach(m=>{
         const cur = weekData[m.item.id];
-        cur.kitchen = (parseFloat(cur.kitchen)||0) + m.addedServings;
+        cur[m.addsTo] = Math.round(((parseFloat(cur[m.addsTo])||0) + m.addedServings)*10)/10;
       });
       save();
       document.body.removeChild(overlay);
@@ -747,7 +779,8 @@ function renderStoreView(app){
   let totUnacctCost=0, totPurchU=0, totAccounted=0, totUnacctUnits=0;
 
   store.items.forEach(item=>{
-    const r = computeRow(item, weekData);
+    const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
+    const r = computeRow(item, weekData, carryIn);
     totUnacctCost += r.unaccountedCost;
     totPurchU += r.purchU;
     totAccounted += r.accountedFor;
@@ -794,7 +827,7 @@ function renderStoreView(app){
   // child of wcard (including the week tab buttons wired up above), which silently destroys the
   // click handlers wireClick just attached to them. This was the actual cause of week-switching
   // not working — not a browser quirk, a bug in this line.
-  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. "Count" lets you log an actual physical cooler count for this week; entering it resets the running on-hand total used for next week's expected-on-hand check.</div>`);
+  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. "Unaccounted" here weighs stock already on hand entering the week (beginning inventory, or whatever was left over from prior weeks) plus this week's Purchased against Accounted For — so an item you didn't need to restock this week won't falsely flag red just because Purchased is 0. Period Summary and the email export still total each week's own Purchased-vs-Accounted flow, not this running balance. "Count" lets you log an actual physical cooler count for this week; entering it resets the running on-hand total used for next week's check.</div>`);
   app.appendChild(wcard);
 
   function renderStoreViewInPlace(){

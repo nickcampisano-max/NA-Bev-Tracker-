@@ -4,6 +4,17 @@ All notable changes to the NA Bev Weekly Variance Tracker are documented here.
 
 ---
 
+## [v1.2] — 2026-07-23
+### Changed
+- **Arnold Palmer's lemonade use now counts as Sold, not Kitchen use.** It's a drink guests order, not an internal recipe like the apple dish — Kitchen use is for non-guest-facing consumption. The CSV import preview and confirm logic now route a recipe link to either Sold or Kitchen use per-item (`addsTo` on the recipe config), defaulting to Sold since most recipe links will be guest drinks like this one.
+- **Unaccounted now factors in stock already on hand, not just this week's Purchased.** Previously, an item you didn't restock that week (but still had plenty of standing inventory for) always showed a negative, alarming-looking Unaccounted number — even though nothing was actually wrong. It's now Beginning On-Hand (or the running balance carried out of prior weeks) + this week's Purchased, minus Accounted For. The % Accounted and red/yellow/green flag are unchanged — they still key off this week's Purchased alone, which already correctly treats a zero-purchase week with real sales as 100%/green. Period Summary, Compare Stores, and the email export still total each week's own Purchased-vs-Accounted flow rather than this running balance, since that's the correct period-level total either way.
+- **Recipe-conversion amounts (like Arnold Palmer → Lemonade servings) round to 1 decimal** instead of carrying full floating-point precision (e.g. 4.666666666666667 → 4.7).
+
+### Fixed
+- **Beginning inventory and physical Count for gallon items (Lemonade) weren't being unit-converted** before being used in the running on-hand calculation — they were entered in gallons but combined directly with servings-based Purchased/Sold math, understating the real carried-forward balance. Both now convert through the same gallons→servings math as Purchased.
+
+---
+
 ## [v1.1] — 2026-07-23
 ### Added
 - **Dark theme redesign** — full visual overhaul from the original light theme to a dark, teal-accented palette (glowing buttons, gradient header text), matching the tool's primary usage context (GitHub Pages, not the Cowork sidebar).
