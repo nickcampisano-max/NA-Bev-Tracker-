@@ -473,10 +473,10 @@ function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeM
   box.innerHTML = html;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
-  box.querySelector('#csvCancel').onclick = ()=> document.body.removeChild(overlay);
+  box.querySelector('#csvCancel').addEventListener('click', ()=> document.body.removeChild(overlay));
   const confirmBtn = box.querySelector('#csvConfirm');
   if(hasAnything){
-    confirmBtn.onclick = ()=>{
+    confirmBtn.addEventListener('click', ()=>{
       matches.forEach(m=>{
         const cur = weekData[m.item.id];
         cur.sold = (parseFloat(cur.sold)||0) + m.qty;
@@ -490,7 +490,7 @@ function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeM
       document.body.removeChild(overlay);
       showToast('Imported into Week '+(weekIdx+1));
       render();
-    };
+    });
   }
 }
 function showPurchasePreview(weekData, weekIdx, matches, unmatched, fileName){
@@ -518,10 +518,10 @@ function showPurchasePreview(weekData, weekIdx, matches, unmatched, fileName){
   box.innerHTML = html;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
-  box.querySelector('#pCancel').onclick = ()=> document.body.removeChild(overlay);
+  box.querySelector('#pCancel').addEventListener('click', ()=> document.body.removeChild(overlay));
   const confirmBtn = box.querySelector('#pConfirm');
   if(matches.length>0){
-    confirmBtn.onclick = ()=>{
+    confirmBtn.addEventListener('click', ()=>{
       matches.forEach(m=>{
         const cur = weekData[m.item.id];
         cur.purchased = (parseFloat(cur.purchased)||0) + m.qty;
@@ -530,7 +530,7 @@ function showPurchasePreview(weekData, weekIdx, matches, unmatched, fileName){
       document.body.removeChild(overlay);
       showToast('Imported purchases for '+matches.length+' item(s) into Week '+(weekIdx+1));
       render();
-    };
+    });
   }
 }
 
@@ -550,19 +550,19 @@ function render(){
     const b = document.createElement('button');
     b.className = 'tab' + (state.activeView==='store' && state.activeStore===key ? ' active':'');
     b.textContent = state.stores[key].name.split('—')[0].trim();
-    b.onclick = ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); };
+    b.addEventListener('click', ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); });
     tabbar.appendChild(b);
   });
   const compareBtn = document.createElement('button');
   compareBtn.className = 'tab' + (state.activeView==='compare' ? ' active':'');
   compareBtn.textContent = '⇄ Compare Stores';
-  compareBtn.onclick = ()=>{ state.activeView='compare'; save(); render(); };
+  compareBtn.addEventListener('click', ()=>{ state.activeView='compare'; save(); render(); });
   tabbar.appendChild(compareBtn);
 
   const settingsBtn = document.createElement('button');
   settingsBtn.className = 'tab' + (state.activeView==='settings' ? ' active':'');
   settingsBtn.textContent = '⚙ Settings';
-  settingsBtn.onclick = ()=>{ state.activeView='settings'; save(); render(); };
+  settingsBtn.addEventListener('click', ()=>{ state.activeView='settings'; save(); render(); });
   tabbar.appendChild(settingsBtn);
 
   app.appendChild(tabbar);
@@ -580,7 +580,7 @@ function renderStoreView(app){
     card.innerHTML = `<div>No items configured for <strong>${store.name}</strong> yet.</div>
       <button class="btn" id="goSettings">Set up items in Settings</button>`;
     app.appendChild(card);
-    card.querySelector('#goSettings').onclick = ()=>{ state.activeView='settings'; save(); render(); };
+    card.querySelector('#goSettings').addEventListener('click', ()=>{ state.activeView='settings'; save(); render(); });
     return;
   }
   ensureActivePeriod(store);
@@ -612,7 +612,7 @@ function renderStoreView(app){
   periodSelect.onchange = ()=>{ store._activePeriodIdx = parseInt(periodSelect.value); store._activeWeekIdx=0; save(); render(); };
   pcard.querySelector('#periodName').oninput = (e)=>{ period.name = e.target.value; save(); };
   pcard.querySelector('#periodStart').oninput = (e)=>{ period.startDate = e.target.value; save(); };
-  pcard.querySelector('#newPeriodBtn').onclick = ()=>{
+  pcard.querySelector('#newPeriodBtn').addEventListener('click', ()=>{
     const carry = {};
     store.items.forEach(it=>{ carry[it.id] = expectedOnHand(store, period, it, 3); });
     const np = newPeriod(store.items, 'Period ' + (store.periods.length+1), '');
@@ -621,7 +621,7 @@ function renderStoreView(app){
     store._activePeriodIdx = store.periods.length-1;
     store._activeWeekIdx = 0;
     save(); render();
-  };
+  });
 
   // Beginning inventory row (period-level, optional)
   const invCard = document.createElement('div');
@@ -648,7 +648,7 @@ function renderStoreView(app){
     const b=document.createElement('button');
     b.className='weektab'+(store._activeWeekIdx===i?' active':'');
     b.textContent='Week '+(i+1);
-    b.onclick=()=>{ store._activeWeekIdx=i; save(); render(); };
+    b.addEventListener('click', ()=>{ store._activeWeekIdx=i; save(); render(); });
     wt.appendChild(b);
   });
   wcard.appendChild(wt);
@@ -808,13 +808,13 @@ function renderPeriodSummary(app, store, period){
   card.appendChild(tbl);
   app.appendChild(card);
 
-  card.querySelector('#copyEmailBtn').onclick = ()=>{
+  card.querySelector('#copyEmailBtn').addEventListener('click', ()=>{
     const text = generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted);
     navigator.clipboard.writeText(text).then(()=>showToast('Email copied to clipboard')).catch(()=>{
       const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
       document.execCommand('copy'); document.body.removeChild(ta); showToast('Email copied to clipboard');
     });
-  };
+  });
 }
 
 function generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted){
@@ -950,17 +950,17 @@ function renderSettings(app){
           save();
         });
       });
-      row.querySelector('[data-remove]').onclick = ()=>{
+      row.querySelector('[data-remove]').addEventListener('click', ()=>{
         store.items.splice(idx,1); save(); render();
-      };
+      });
       list.appendChild(row);
     });
     card.appendChild(list);
-    card.querySelector('[data-add]').onclick = ()=>{
+    card.querySelector('[data-add]').addEventListener('click', ()=>{
       store.items.push({id:'item'+Date.now(), name:'New Item', unit:'can', price:0, cost:0, pourOz:null, defaultKitchen:0, kitchenNote:''});
       store.periods.forEach(p=>p.weeks.forEach(w=>{ w[store.items[store.items.length-1].id] = {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''}; }));
       save(); render();
-    };
+    });
     app.appendChild(card);
   });
 
@@ -968,12 +968,12 @@ function renderSettings(app){
   resetCard.className='card';
   resetCard.innerHTML = `<h3>Reset</h3><div class="info-note" style="margin-bottom:8px">Clears all tracked data for every store. Item configuration is kept.</div>
     <button class="btn danger small" id="resetData">Clear all weekly data</button>`;
-  resetCard.querySelector('#resetData').onclick = ()=>{
+  resetCard.querySelector('#resetData').addEventListener('click', ()=>{
     if(confirm('Clear all weekly/period data for every store? Item settings will be kept.')){
       Object.values(state.stores).forEach(s=>{ s.periods=[]; s._activePeriodIdx=undefined; s._activeWeekIdx=undefined; });
       save(); render();
     }
-  };
+  });
   app.appendChild(resetCard);
 }
 

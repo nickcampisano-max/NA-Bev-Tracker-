@@ -14,6 +14,7 @@ All notable changes to the NA Bev Weekly Variance Tracker are documented here.
 
 ### Fixed
 - **Import CSV button doing nothing on click** — the original implementation created a hidden file input and triggered it via a scripted `.click()`, which some browsers silently block for file inputs as a security measure. Replaced with a native `<label for>` + `<input type=file>` pair, the standard cross-browser-safe pattern for custom-styled upload buttons.
+- **Week tabs — and every other button in the app — not responding to clicks** — traced to the app using the older `element.onclick = fn` property-assignment pattern throughout (14 places: week tabs, store/compare/settings tabs, New Period, Copy Email, Settings add/remove/reset, CSV preview confirm/cancel). Something in this browser's environment silently ignores that assignment style — confirmed live by creating an identical test button that failed the same way with `.onclick =` but worked instantly with `.addEventListener('click', ...)`, which is also almost certainly the original cause of the Import CSV button issue. All 14 converted to `addEventListener`.
 - **Drag-and-drop not registering** — the drop target was only the small dashed box, so a slightly imprecise drop landed outside it and the browser's default behavior (navigate away to display the raw file) fired instead of the importer. The whole week card is now the drop target, and a window-level dragover/drop guard prevents that default navigation anywhere on the page.
 
 ### Removed
