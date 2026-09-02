@@ -4,6 +4,38 @@ All notable changes to the NA Bev Weekly Variance Tracker are documented here.
 
 ---
 
+## [v1.5] — 2026-08-24
+### Changed
+- **Removed the Gilbert and Scottsdale stores.** Both were always empty (no items, no data) — the tracker now covers Clever Koi Central Phoenix only. A migration (`pruneRemovedStores`) drops them from any browser's already-saved localStorage too, so old tabs don't linger.
+- **Order Guide reworked to match Gary's real ordering process**, after reviewing his live "CKC + ATP NA BEVERAGE ORDER GUIDE" sheet — it surfaced that the first version's weekly-cadence assumption was wrong:
+  - Items are grouped by vendor (Shamrock, Passport), each with its own table.
+  - Order logging is now per real order window, not per calendar week — Shamrock (sodas/lemonade) gets three columns (Tue-for-Thu, Thu-for-Sat, Sat-for-Mon), Passport (coffee/tea) gets one (Tue-for-the-week). The `orders` data shape changed from one `{qty,date}` per item per week to an array of them, sized to the item's vendor.
+  - Added a Size column (`sizeLabel` on each item, e.g. "12 oz (24/cs)") mirroring his sheet's SIZE column.
+  - Added 8 new order-only items for Passport (Coffee Decaf/Espresso/Whole Bean, 4 teas, tea filters) — no sales data exists for these, so they show "—" for avg usage/par/suggested (same as blank cells on his sheet) but still get order-window logging.
+  - The "Suggested" quantity stays a whole-week figure (par − on-hand), not split per order window — real sales data only arrives at weekly granularity, so a per-window forecast would be false precision. Logging is per-window; the suggestion is a weekly directional guide.
+  - Corrected 3 item costs to match his sheet, which is his live vendor-pricing reference: Dr Pepper 0.99→0.96, Root Beer 0.68→0.71, Lemonade 8.08→8.18. This only affects newly-seeded browsers — an existing browser's saved cost isn't overwritten by migration, so already-deployed data needs the same correction applied once via Settings (or directly, if done for Nick's live tab already).
+  - `migrateOrders()` now also upgrades the very first Order Guide version's single-slot order format into the new per-window array format, padding new slots blank rather than guessing.
+
+---
+
+## [v1.4] — 2026-08-24
+### Added
+- **Order Guide view** — a new tab, separate from the Variance view on purpose (see reasoning below). Built for Gary (area director), who's now taking over NA Bev ordering from Nick. Per item, per week: trailing average usage (Sold + Kitchen use, last up to 4 weeks with real data, spanning prior periods so a new period doesn't reset to nothing), a suggested par target (avg usage × a per-item multiplier, default 1.3x, editable in Settings), estimated current on-hand (the same running-balance math as the Variance view's carryIn, but through-and-including the current week rather than entering it — the freshest snapshot available), and a suggested order quantity (par − on-hand, floored at zero). Also logs what was actually ordered (qty + date) per item per week, shown as "Last order" starting the following week — kept separate from `purchased` (what MarginEdge shows arrived) since an order and what shows up can legitimately differ.
+- Shares item config (name, unit, price, cost, par multiplier) and period/week structure with the Variance view — one config to maintain, not two. Deliberately kept as a separate view rather than merged into the Variance table: the Variance view is backward-looking accountability (did purchased match sold), the Order Guide is forward-looking decision support (how much to buy next) — the tracker's own v1.0 changelog entry ruled out mixing these into one tool, and that's still the right call.
+- "Real time" here means "as of whatever's been imported/entered so far" — there's no live POS feed, so the on-hand figure is a snapshot, not literally live. Labeled as such in the view.
+
+### Data model
+- Added `parMultiplier` to item config (default 1.3, per-item, editable in Settings) and a new `orders` array on each period (mirrors the `weeks` array shape — one entry per week, per item: `{qty, date}`). Both are backfilled automatically for existing saved data via `migrateOrders()`, following the same pattern as `migrateItemConfig()`.
+
+---
+
+## [v1.3] — 2026-08-13
+### Fixed
+- **"+ New Period" corrupted gallon items' carried-forward beginning inventory.** It carried forward `expectedOnHand` (a servings-equivalent number) directly into the new period's `beginInv` field, which is stored in each item's native unit — fine for cans (1 unit = 1 serving), but wrong for Lemonade, where it wrote a servings number into a gallons field and understated the true carried-forward stock by ~21x. Added `servingsToNative(item, servings)`, the inverse of the existing `purchasedServings()`, and routed the "+ New Period" handler through it.
+- Period 9 for Central was started directly from Period 8's verified 8/2/2026 ending inventory (Coke 14, Diet Coke 27, Sprite 43, Dr Pepper 22, Root Beer 11, Lemonade 0.7 gal) rather than a fresh physical count, per Nick's call that the just-closed P8 count was already accurate enough to carry forward.
+
+---
+
 ## [v1.2] — 2026-07-23
 ### Changed
 - **Arnold Palmer's lemonade use now counts as Sold, not Kitchen use.** It's a drink guests order, not an internal recipe like the apple dish — Kitchen use is for non-guest-facing consumption. The CSV import preview and confirm logic now route a recipe link to either Sold or Kitchen use per-item (`addsTo` on the recipe config), defaulting to Sold since most recipe links will be guest drinks like this one.
