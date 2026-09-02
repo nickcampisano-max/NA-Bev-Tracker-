@@ -101,6 +101,19 @@
   .flag.yellow { background: var(--yellow-bg); color: var(--yellow); }
   .flag.red { background: var(--red-bg); color: var(--red); }
   .sustained { font-size: 10.5px; color: var(--red); font-weight: 700; display: block; margin-top: 2px; }
+  /* Deliberately a different color from the red/yellow/green flag — this is a separate signal
+     (cumulative unaccounted $ pile) from the weekly flag (this week's purchased-vs-sold ratio),
+     and shouldn't be visually confused with it even when they happen to coincide. */
+  .flag.alert-large { background: #4a2408; color: #fb923c; margin-left: 4px; }
+  /* Groups the week table's columns into two visually distinct bands — "This Week" (the flow
+     check: did what got bought this week get sold) vs "Running Total" (the accumulated pile,
+     including stock carried over from before) — so it's obvious at a glance that a column's
+     number and a column's badge might be answering two different questions, not contradicting
+     each other. */
+  th.group-header { text-align: center; font-size: 10px; padding: 5px 8px 4px; }
+  th.group-header.this-week { background: rgba(45,212,191,.08); color: var(--teal); }
+  th.group-header.running-total { background: rgba(251,146,60,.1); color: #fb923c; }
+  th.group-header .sub { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: .8; }
 
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 16px; }
   .kpi { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
@@ -192,6 +205,13 @@ function defaultState(){
   return {
     activeStore: 'central',
     activeView: 'store', // 'store' | 'order' | 'settings'
+    // Independent of the weekly Flag (which only checks this week's purchased-vs-sold ratio and
+    // ignores carried-over stock, by design — see computeRow). This is a second, separate signal:
+    // regardless of what the weekly flag says, warn when the *cumulative pile* of unaccounted
+    // product for an item/week crosses this dollar amount. Catches the case where purchasing
+    // keeps roughly pace with sales every week (so the flag stays green) while a large real
+    // surplus quietly sits unaccounted for the whole time.
+    unaccountedAlertThreshold: 50,
     stores: {
       central: {
         name: 'Clever Koi — Central Phoenix',
@@ -254,6 +274,7 @@ function load(){
     pruneRemovedStores(parsed);
     migrateItemConfig(parsed);
     migrateOrders(parsed);
+    if(parsed.unaccountedAlertThreshold === undefined) parsed.unaccountedAlertThreshold = 50;
     return parsed;
   }catch(e){ return defaultState(); }
 }
@@ -761,7 +782,11 @@ function render(){
   Object.keys(state.stores).forEach(key=>{
     const b = document.createElement('button');
     b.className = 'tab' + (state.activeView==='store' && state.activeStore===key ? ' active':'');
-    b.textContent = state.stores[key].name.split('—')[0].trim();
+    // Tab label describes the view's function (matching Order Guide/Compare Periods/Settings)
+    // rather than the store's name — with a single store, the name no longer distinguishes
+    // anything, and it never told you what was on the tab anyway. The store's actual name is
+    // untouched everywhere else (Order Guide header, email subject, Compare Periods).
+    b.textContent = 'Sales vs Purchasing';
     wireClick(b, ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); });
     tabbar.appendChild(b);
   });
@@ -773,7 +798,7 @@ function render(){
 
   const compareBtn = document.createElement('button');
   compareBtn.className = 'tab' + (state.activeView==='compare' ? ' active':'');
-  compareBtn.textContent = '⇄ Compare Stores';
+  compareBtn.textContent = '⇄ Compare Periods';
   wireClick(compareBtn, ()=>{ state.activeView='compare'; save(); render(); });
   tabbar.appendChild(compareBtn);
 
@@ -836,7 +861,13 @@ function renderStoreView(app){
     // expectedOnHand returns a servings-equivalent number; beginInv is a native-unit field
     // (gallons for Lemonade, per the "(gal)" input label), so it needs converting back or a
     // gallon item's next period starts over 21x too high (128oz/gal ÷ 6oz pour).
-    store.items.forEach(it=>{ carry[it.id] = servingsToNative(it, expectedOnHand(store, period, it, 3)); });
+    // Order-only items (Passport coffee/tea) never participate in this reconciliation flow at
+    // all — but a purchase CSV can still incidentally match one of them (e.g. a broader
+    // MarginEdge report with a "Coffee, Whole Bean" line), leaving a stray non-zero purchased
+    // value sitting on some week. Carrying that through expectedOnHand would produce a
+    // meaningless computed "beginning inventory" for an item that was never actually tracked —
+    // so these are skipped here rather than carried forward.
+    store.items.filter(it=>!it.orderOnly).forEach(it=>{ carry[it.id] = servingsToNative(it, expectedOnHand(store, period, it, 3)); });
     const np = newPeriod(store.items, 'Period ' + (store.periods.length+1), '');
     np.beginInv = carry;
     store.periods.push(np);
@@ -851,7 +882,9 @@ function renderStoreView(app){
   invCard.innerHTML = `<h3>Beginning on-hand (optional — enables count reconciliation)</h3>`;
   const invRow = document.createElement('div');
   invRow.style.display='flex'; invRow.style.gap='14px'; invRow.style.flexWrap='wrap';
-  store.items.forEach(it=>{
+  // Order-only items (Passport coffee/tea) don't participate in variance reconciliation at all —
+  // showing them here would imply they're tracked when they're not.
+  store.items.filter(it=>!it.orderOnly).forEach(it=>{
     const f = document.createElement('div'); f.className='settings-field';
     f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
     const inp = document.createElement('input'); inp.type='text'; inp.value = period.beginInv[it.id] ?? '';
@@ -861,6 +894,29 @@ function renderStoreView(app){
   });
   invCard.appendChild(invRow);
   app.appendChild(invCard);
+
+  // Ending on-hand — NOT a separate field. This reads/writes the exact same data as Week 4's
+  // Count column (period.weeks[3][item.id].actualCount); it's surfaced here as its own card so
+  // the period's close-out count is visible without switching to the Week 4 tab, and easy to
+  // fix if something was missed. There's only one number underneath either way — editing it
+  // here or editing it inline on Week 4 both write to the same place, so they can never drift
+  // out of sync with each other.
+  const endCard = document.createElement('div');
+  endCard.className = 'card';
+  endCard.innerHTML = `<h3>Ending on-hand (optional — this period's close-out count, same field as Week 4's Count column)</h3>`;
+  const endRow = document.createElement('div');
+  endRow.style.display='flex'; endRow.style.gap='14px'; endRow.style.flexWrap='wrap';
+  const lastWeekData = period.weeks[3];
+  store.items.filter(it=>!it.orderOnly).forEach(it=>{
+    const f = document.createElement('div'); f.className='settings-field';
+    f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
+    const inp = document.createElement('input'); inp.type='text'; inp.value = lastWeekData[it.id].actualCount ?? '';
+    inp.addEventListener('change', (e)=>{ lastWeekData[it.id].actualCount = e.target.value; save(); render(); });
+    f.appendChild(inp);
+    endRow.appendChild(f);
+  });
+  endCard.appendChild(endRow);
+  app.appendChild(endCard);
 
   // Week tabs
   const wcard = document.createElement('div');
@@ -912,21 +968,27 @@ function renderStoreView(app){
   });
 
   const table = document.createElement('table');
-  table.innerHTML = `<thead><tr>
-    <th class="left">Item</th>
-    <th>Purchased</th>
-    <th>Sold (all ch.)</th>
-    <th>Discount $</th>
-    <th>Comped*</th>
-    <th>Kitchen use</th>
-    <th>Accounted for</th>
-    <th>Unaccounted</th>
-    <th>Unacct. cost</th>
-    <th>% acct.</th>
-    <th>Flag</th>
-    <th>Count (opt.)</th>
-    <th class="left">Notes</th>
-  </tr></thead>`;
+  table.innerHTML = `<thead>
+    <tr>
+      <th class="left" rowspan="2">Item</th>
+      <th class="group-header this-week" colspan="8">This week</th>
+      <th class="group-header running-total" colspan="2">Running total <span class="sub">(since period start)</span></th>
+      <th rowspan="2">Count (opt.)</th>
+      <th class="left" rowspan="2">Notes</th>
+    </tr>
+    <tr>
+      <th>Purchased</th>
+      <th>Sold (all ch.)</th>
+      <th>Discount $</th>
+      <th>Comped*</th>
+      <th>Kitchen use</th>
+      <th>Accounted for</th>
+      <th title="This week's Accounted for ÷ this week's Purchased. Doesn't include stock carried over from prior weeks — a week with 0 Purchased and some Sold still shows 100%, since there was nothing new to reconcile. Shown as 100%+ when more got sold than was purchased this week — not an error, just means some of what sold came from stock bought before this week.">% of purchases†</th>
+      <th>Flag</th>
+      <th>Unaccounted</th>
+      <th>Unacct. cost</th>
+    </tr>
+  </thead>`;
   const tbody = document.createElement('tbody');
 
   let totUnacctCost=0, totPurchU=0, totAccounted=0, totUnacctUnits=0;
@@ -943,6 +1005,16 @@ function renderStoreView(app){
 
     const tr = document.createElement('tr');
     const sustained = sustainedRed(period, item.id, weekIdx);
+    // Independent of r.flag on purpose — see the threshold's comment in defaultState(). r.flag
+    // only ever looks at this week's purchased-vs-sold ratio; this looks at the actual size of
+    // the unaccounted pile (in dollars, so it's comparable across items of very different volume/
+    // cost), regardless of what this week's ratio says. A week can be green on flow and still
+    // trip this if there's a large real surplus sitting unaccounted. Attached to the Unacct. cost
+    // cell (the Running total group) rather than next to the Flag badge (the This week group) —
+    // putting "OK" and "⚠ LARGE" side by side in the same cell read as a contradiction, when
+    // they're actually answering two different questions about two different time windows.
+    const threshold = state.unaccountedAlertThreshold ?? 50;
+    const isLargeUnaccounted = Math.abs(r.unaccountedCost) >= threshold;
     tr.innerHTML = `
       <td class="left"><strong>${item.name}</strong><div class="info-note" style="margin:0">${item.unit==='gallon' ? item.pourOz+'oz pour' : ''}</div></td>
       <td><input type="text" data-f="purchased" value="${weekData[item.id].purchased}"></td>
@@ -951,17 +1023,22 @@ function renderStoreView(app){
       <td>${fmtN(r.comped)}</td>
       <td><input type="text" data-f="kitchen" value="${weekData[item.id].kitchen}"></td>
       <td>${fmtN(r.accountedFor)}</td>
-      <td style="font-weight:700; color:${r.unaccounted>0?'var(--red)':'var(--ink)'}">${fmtN(r.unaccounted)}</td>
-      <td>${fmt$(r.unaccountedCost)}</td>
-      <td>${r.pctAccounted.toFixed(0)}%</td>
+      <td title="${r.pctAccounted.toFixed(0)}% exactly (${fmtN(r.accountedFor)} accounted for ÷ ${fmtN(r.purchU)} purchased this week)${(r.purchU>0 && r.accountedFor>r.purchU)?' — sold more than was purchased this week, using stock from before':''}">${(r.purchU>0 && r.accountedFor>r.purchU) ? '100%+' : r.pctAccounted.toFixed(0)+'%'}</td>
       <td><span class="flag ${r.flag}">${r.flag==='green'?'OK':r.flag==='yellow'?'WATCH':'FLAG'}</span>${sustained?'<span class="sustained">2+ wks</span>':''}</td>
+      <td style="font-weight:700; color:${r.unaccounted>0?'var(--red)':'var(--ink)'}">${fmtN(r.unaccounted)}</td>
+      <td style="${isLargeUnaccounted?'font-weight:700; color:#fb923c;':''}">${fmt$(r.unaccountedCost)}${isLargeUnaccounted?`<span class="flag alert-large" title="Running total unaccounted cost ${fmt$(r.unaccountedCost)} is at or above your $${threshold} alert threshold — this is the accumulated pile since period start, separate from This Week's Flag">⚠ Large</span>`:''}</td>
       <td><input type="text" data-f="actualCount" value="${weekData[item.id].actualCount}" placeholder="—"></td>
       <td class="left"><textarea class="note" data-f="notes">${weekData[item.id].notes}</textarea></td>
     `;
     tbody.appendChild(tr);
 
+    // 'change' (fires on blur/Enter), not 'input' (fires per keystroke) — this table's handler
+    // re-renders the whole page to recompute Accounted for/Unaccounted/Flag/Total, and doing that
+    // on every keystroke destroys and rebuilds the very input you're mid-typing into, silently
+    // dropping every character after the first (typing "49" only ever saved "4"). 'change' commits
+    // once you leave the field, so the browser's native text input handles the typing untouched.
     tr.querySelectorAll('input, textarea').forEach(inp=>{
-      inp.addEventListener('input', (e)=>{
+      inp.addEventListener('change', (e)=>{
         weekData[item.id][e.target.dataset.f] = e.target.value;
         save();
         renderStoreViewInPlace();
@@ -969,11 +1046,13 @@ function renderStoreView(app){
     });
   });
 
-  // total row
+  // total row — column order matches the header: Item, Purchased, [Sold/Discount/Comped/Kitchen
+  // skipped], Accounted for, % of purchases, Flag, Unaccounted, Unacct. cost, [Count/Notes skipped]
   const pctTot = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
+  const pctTotDisplay = (totPurchU>0 && totAccounted>totPurchU) ? '100%+' : pctTot.toFixed(0)+'%';
   const trTot = document.createElement('tr');
   trTot.className='total-row';
-  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td colspan="4"></td><td>${fmtN(totAccounted)}</td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td>${pctTot.toFixed(0)}%</td><td colspan="3"></td>`;
+  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td colspan="4"></td><td>${fmtN(totAccounted)}</td><td title="${pctTot.toFixed(0)}% exactly">${pctTotDisplay}</td><td></td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td colspan="2"></td>`;
   tbody.appendChild(trTot);
 
   table.appendChild(tbody);
@@ -982,7 +1061,7 @@ function renderStoreView(app){
   // child of wcard (including the week tab buttons wired up above), which silently destroys the
   // click handlers wireClick just attached to them. This was the actual cause of week-switching
   // not working — not a browser quirk, a bug in this line.
-  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. "Unaccounted" here weighs stock already on hand entering the week (beginning inventory, or whatever was left over from prior weeks) plus this week's Purchased against Accounted For — so an item you didn't need to restock this week won't falsely flag red just because Purchased is 0. Period Summary and the email export still total each week's own Purchased-vs-Accounted flow, not this running balance. "Count" lets you log an actual physical cooler count for this week; entering it resets the running on-hand total used for next week's check.</div>`);
+  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, shown for reference only — it's already included in "Sold" and "Accounted for," not additive. †"This week" columns (including % of purchases and Flag) only look at what happened this week — this week's Purchased vs. this week's Accounted for — and ignore stock left over from prior weeks, so a slow week with 0 Purchased still shows 100%/green instead of a false alarm. "Running total" columns (Unaccounted, Unacct. cost) are the opposite: the full accumulated pile, including everything carried over since the period started. The two can disagree on purpose — a green Flag with a "⚠ Large" badge means this week's buying-and-selling looks fine, but there's still a real backlog of product sitting unaccounted for overall. Period Summary and the email export total each week's own This-Week flow, not this running balance. "Count" lets you log an actual physical cooler count for this week; entering it resets the running total used for next week's check.</div>`);
   app.appendChild(wcard);
 
   function renderStoreViewInPlace(){
@@ -1000,17 +1079,31 @@ function renderPeriodSummary(app, store, period){
     <button class="btn secondary small" id="copyEmailBtn">📋 Copy Email</button></div>`;
 
   let totUnacctCost=0, totUnacctUnits=0, totRetail=0, totPurchU=0, totAccounted=0;
+  // Comp vs. revenue split: `comped` and `sold` here are the same fields computeRow already
+  // derives (comped = discount$ / price, sold includes comped units rung into POS at $0/reduced).
+  // grossPotential is what those sold units would have billed at full menu price; discSum is what
+  // was actually given away. Deliberately two separate percentages, not one — comp rate (units)
+  // and revenue realized (dollars) diverge on purpose, since a comped unit is a full unit but zero
+  // revenue. See CHANGELOG for the Nick/Gary discussion this came out of.
+  let totSold=0, totComp=0, totDisc=0, totGrossPotential=0;
   const perItem = store.items.filter(it=>!it.orderOnly).map(item=>{
-    let pu=0, ac=0, ua=0, uc=0;
+    let pu=0, ac=0, ua=0, uc=0, soldSum=0, compSum=0, discSum=0;
     period.weeks.forEach(w=>{
       const r = computeRow(item, w);
       pu+=r.purchU; ac+=r.accountedFor; ua+=r.unaccounted; uc+=r.unaccountedCost;
+      soldSum+=r.sold; compSum+=r.comped; discSum+=r.discount;
     });
     totUnacctCost+=uc; totUnacctUnits+=ua; totPurchU+=pu; totAccounted+=ac;
     totRetail += Math.max(ua,0)*item.price;
-    return {item, pu, ac, ua, uc};
+    const grossPotential = soldSum * item.price;
+    totSold+=soldSum; totComp+=compSum; totDisc+=discSum; totGrossPotential+=grossPotential;
+    const compRatePct = soldSum>0 ? (compSum/soldSum*100) : 0;
+    const revenueRealizedPct = grossPotential>0 ? ((grossPotential-discSum)/grossPotential*100) : 0;
+    return {item, pu, ac, ua, uc, soldSum, compSum, discSum, compRatePct, revenueRealizedPct};
   });
   const margin = totRetail - Math.max(totUnacctCost,0);
+  const totCompRatePct = totSold>0 ? (totComp/totSold*100) : 0;
+  const totRevenueRealizedPct = totGrossPotential>0 ? ((totGrossPotential-totDisc)/totGrossPotential*100) : 0;
 
   const kpis = document.createElement('div');
   kpis.className='kpi-grid';
@@ -1020,17 +1113,19 @@ function renderPeriodSummary(app, store, period){
     <div class="kpi"><div class="label">Retail value if sold</div><div class="value">${fmt$(totRetail)}</div></div>
     <div class="kpi"><div class="label">Margin never captured</div><div class="value red">${fmt$(margin)}</div></div>
     <div class="kpi"><div class="label">% accounted, period</div><div class="value ${totPurchU>0 && totAccounted/totPurchU>=0.85 ? 'green':''}">${totPurchU>0?((totAccounted/totPurchU)*100).toFixed(0):'—'}%</div></div>
+    <div class="kpi" title="Staff comp perk units ÷ total units sold, all channels. Comp $ backed out from discount $ ÷ menu price."><div class="label">Staff comp rate</div><div class="value">${totSold>0?totCompRatePct.toFixed(0):'—'}%</div></div>
+    <div class="kpi" title="What was actually billed vs. what the same units would have billed at full menu price. The gap is the comp perk cost, not lost/unaccounted product."><div class="label">Revenue realized</div><div class="value ${totGrossPotential>0 && totRevenueRealizedPct>=90 ? 'green':''}">${totGrossPotential>0?totRevenueRealizedPct.toFixed(0):'—'}%</div></div>
   `;
   card.appendChild(kpis);
 
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th>Unaccounted</th><th>% acct.</th><th>Cost</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th>Unaccounted</th><th>% acct.</th><th>Cost</th><th title="Staff comp units ÷ total units sold this period">Comp %</th><th title="Billed $ ÷ full-price potential $ this period — the gap is the comp perk, not missing product">Revenue %</th></tr></thead>`;
   const tb = document.createElement('tbody');
-  perItem.forEach(({item,pu,ac,ua,uc})=>{
+  perItem.forEach(({item,pu,ac,ua,uc,soldSum,compRatePct,revenueRealizedPct})=>{
     const pct = pu>0 ? (ac/pu*100) : 0;
     const flag = pct<70?'red':pct<85?'yellow':'green';
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="left">${item.name}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td>${fmtN(ua)}</td><td><span class="flag ${flag}">${pct.toFixed(0)}%</span></td><td>${fmt$(uc)}</td>`;
+    tr.innerHTML = `<td class="left">${item.name}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td>${fmtN(ua)}</td><td><span class="flag ${flag}">${pct.toFixed(0)}%</span></td><td>${fmt$(uc)}</td><td>${soldSum>0?compRatePct.toFixed(0)+'%':'—'}</td><td>${soldSum>0?revenueRealizedPct.toFixed(0)+'%':'—'}</td>`;
     tb.appendChild(tr);
   });
   tbl.appendChild(tb);
@@ -1203,43 +1298,48 @@ function renderOrderGuide(app){
 }
 
 // ---------- Compare view ----------
+// Was "Cross-Store Comparison" (one row per store, each store's latest period) back when there
+// were multiple stores. With only Central Phoenix left, comparing stores would collapse to a
+// single row — not useful. Repurposed to compare periods instead: one row per period for this
+// store, so you can see whether % accounted / unaccounted cost are trending in the right
+// direction period over period, which nothing else in the app currently shows (Period Summary
+// only ever shows one period at a time).
 function renderCompare(app){
+  const store = getActiveStore();
   const card = document.createElement('div');
   card.className='card';
-  card.innerHTML = `<h2>Cross-Store Comparison</h2><div class="info-note" style="margin-bottom:10px">Compares each store's most recent period. Only stores with configured items and at least one week of data are shown.</div>`;
+  card.innerHTML = `<h2>Compare Periods — ${store.name}</h2><div class="info-note" style="margin-bottom:10px">Each period's totals side by side, oldest to newest, so you can see whether things are trending in the right direction.</div>`;
 
   const rows = [];
-  Object.keys(state.stores).forEach(key=>{
-    const store = state.stores[key];
-    if(store.items.length===0 || store.periods.length===0) return;
-    const idx = store._activePeriodIdx ?? store.periods.length-1;
-    const period = store.periods[idx];
-    let totPurchU=0, totAccounted=0, totUnacctCost=0;
-    let worst = null;
-    store.items.filter(it=>!it.orderOnly).forEach(item=>{
-      let pu=0, ac=0, uc=0;
-      period.weeks.forEach(w=>{ const r=computeRow(item,w); pu+=r.purchU; ac+=r.accountedFor; uc+=r.unaccountedCost; });
-      totPurchU+=pu; totAccounted+=ac; totUnacctCost+=uc;
-      const pct = pu>0 ? ac/pu*100 : 100;
-      if(!worst || pct < worst.pct) worst = {name:item.name, pct};
+  if(store.items.length>0){
+    store.periods.forEach(period=>{
+      let totPurchU=0, totAccounted=0, totUnacctCost=0;
+      let worst = null;
+      store.items.filter(it=>!it.orderOnly).forEach(item=>{
+        let pu=0, ac=0, uc=0;
+        period.weeks.forEach(w=>{ const r=computeRow(item,w); pu+=r.purchU; ac+=r.accountedFor; uc+=r.unaccountedCost; });
+        totPurchU+=pu; totAccounted+=ac; totUnacctCost+=uc;
+        const pct = pu>0 ? ac/pu*100 : 100;
+        if(!worst || pct < worst.pct) worst = {name:item.name, pct};
+      });
+      const pctAcct = totPurchU>0 ? (totAccounted/totPurchU*100) : null;
+      rows.push({name: period.name, startDate: period.startDate, pctAcct, totUnacctCost, worst});
     });
-    const pctAcct = totPurchU>0 ? (totAccounted/totPurchU*100) : null;
-    rows.push({name: store.name, period: period.name, pctAcct, totUnacctCost, worst});
-  });
+  }
 
   if(rows.length===0){
-    card.insertAdjacentHTML('beforeend', `<div class="empty-state">No data entered yet across any store.</div>`);
+    card.insertAdjacentHTML('beforeend', `<div class="empty-state">No periods yet.</div>`);
     app.appendChild(card);
     return;
   }
 
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th class="left">Store</th><th class="left">Period</th><th>% accounted</th><th>Unaccounted cost</th><th class="left">Worst item</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr><th class="left">Period</th><th class="left">Start date</th><th>% accounted</th><th>Unaccounted cost</th><th class="left">Worst item</th></tr></thead>`;
   const tb = document.createElement('tbody');
   rows.forEach(r=>{
     const flag = r.pctAcct===null ? '' : r.pctAcct<70?'red':r.pctAcct<85?'yellow':'green';
     tb.appendChild(Object.assign(document.createElement('tr'), {innerHTML:
-      `<td class="left">${r.name}</td><td class="left">${r.period}</td>
+      `<td class="left">${r.name}</td><td class="left">${r.startDate||'—'}</td>
        <td>${r.pctAcct===null?'—':'<span class="flag '+flag+'">'+r.pctAcct.toFixed(0)+'%</span>'}</td>
        <td>${fmt$(r.totUnacctCost)}</td>
        <td class="left">${r.worst ? r.worst.name+' ('+r.worst.pct.toFixed(0)+'%)' : '—'}</td>`
@@ -1258,7 +1358,7 @@ function renderCompare(app){
   new Chart(canvas, {
     type:'bar',
     data:{
-      labels: rows.map(r=>r.name.split('—')[0].trim()),
+      labels: rows.map(r=>r.name),
       datasets:[{ label:'Unaccounted cost ($)', data: rows.map(r=>Math.round(r.totUnacctCost*100)/100),
         backgroundColor:'#2dd4bf', borderRadius:6 }]
     },
@@ -1275,6 +1375,18 @@ function renderCompare(app){
 
 // ---------- Settings ----------
 function renderSettings(app){
+  const alertCard = document.createElement('div');
+  alertCard.className = 'card';
+  alertCard.innerHTML = `<h3>Alerts</h3>
+    <div class="info-note" style="margin-bottom:8px">The weekly Flag (OK/WATCH/FLAG) only checks this week's purchased-vs-sold ratio — a large pile of unaccounted product can otherwise sit there indefinitely without tripping it, as long as purchasing keeps roughly pace with sales each week. This is a second, independent check: any week where an item's unaccounted <em>cost</em> is at or above this dollar amount gets a separate "⚠ LARGE" badge, regardless of what the weekly Flag says.</div>
+    <div class="settings-field"><label>Unaccounted $ alert threshold</label><input type="text" id="alertThreshold" value="${state.unaccountedAlertThreshold ?? 50}" style="width:90px"></div>`;
+  app.appendChild(alertCard);
+  alertCard.querySelector('#alertThreshold').addEventListener('change', (e)=>{
+    const v = parseFloat(e.target.value);
+    state.unaccountedAlertThreshold = isNaN(v) ? 50 : v;
+    save(); render();
+  });
+
   Object.keys(state.stores).forEach(key=>{
     const store = state.stores[key];
     const card = document.createElement('div');

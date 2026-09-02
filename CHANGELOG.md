@@ -4,6 +4,55 @@ All notable changes to the NA Bev Weekly Variance Tracker are documented here.
 
 ---
 
+## [v2.2] — 2026-09-02
+### Fixed
+- **Lemonade's stray Kitchen use values (Period 9, Weeks 2–3) — root cause confirmed and corrected.** These were real Arnold Palmer conversions (Week 2: 4 sold; Week 3: at least 5, possibly imported in two passes) that got routed to Kitchen use back when that recipe link's `addsTo` was still `'kitchen'` and unrounded — before the v1.2 fix. The saved item config already said `addsTo:'sold'` by the time this was investigated, confirming the fix never touches historical week data, only new imports going forward. Corrected by moving each week's Kitchen value into Sold (rounded to match how the current code would have recorded it) and zeroing Kitchen use. Kitchen use is now genuinely $0/0 units across every period — this was a one-time data correction in Nick's saved state, not a code change (no source file involved).
+
+### Added
+- **Staff comp rate & Revenue realized** — two new metrics on the Period Summary, prompted by Nick wanting to see profit (guest-paid sales) vs. perk (staff comps) separately, not blended into one "accounted for" number. Built entirely from existing fields, no new data collection: comp units = discount $ ÷ menu price (already computed as `comped`); revenue realized = billed $ ÷ what the same units would bill at full price. Deliberately two separate percentages rather than one, since a comped unit is a full unit but zero revenue — they diverge on purpose. Two new period-level KPI cards, plus Comp % / Revenue % columns added to the existing per-item Period Summary table (not the weekly Variance table, to avoid re-adding the column clutter just removed). Confirmed with Nick beforehand that the "Discount $" field is staff-comp-only for these items (no other discount type touches NA bev), so no separate Toast reason-code report is needed for this to be accurate.
+
+### Investigated (resolved)
+- Kitchen use mystery from v2.1 — see Fixed, above.
+
+---
+
+## [v2.0] — 2026-08-31
+### Changed
+- **Variance table redesigned for clarity**, after Nick flagged that a green "OK" flag sitting right next to an orange "⚠ LARGE" badge read as a flat contradiction, and that "% acct." (104% for Coke) didn't explain what it was measuring. Root issue: the table was mixing two different time windows — This Week (the flow check: did what got bought this week get sold) and Running Total (the accumulated pile since period start) — with no visual distinction between them.
+  - Columns now grouped under two header bands: teal "This week" (Purchased, Sold, Discount $, Comped, Kitchen use, Accounted for, % of purchases, Flag) and orange "Running total (since period start)" (Unaccounted, Unacct. cost).
+  - The "⚠ Large" badge moved off the Flag cell (This Week) onto the Unacct. cost cell (Running Total) — it's describing that number, not contradicting the flag next to it.
+  - "% acct." renamed to "% of purchases†" with a tooltip spelling out the formula (this week's Accounted for ÷ this week's Purchased, excluding carried-over stock).
+  - Footnote rewritten to explain plainly why the two groups can legitimately disagree — a green flag with a "⚠ Large" badge means this week's buying-and-selling looks fine, but there's still a real backlog sitting unaccounted overall.
+
+---
+
+## [v1.9] — 2026-08-31
+### Added
+- **"⚠ LARGE" alert badge**, independent of the weekly OK/WATCH/FLAG. The weekly flag only ever checks this week's purchased-vs-sold ratio (by design, so a zero-purchase week with real sales isn't a false alarm) — which means a large real pile of unaccounted product can sit there indefinitely, green the whole time, as long as purchasing keeps roughly pace with sales each week. Caught live: Coke Week 3 of Period 9 showed 82 units / $78.72 unaccounted with a green "OK" flag, because 50 sold against 48 purchased that week is 104%. The new badge is a second, independent check — any week where an item's unaccounted *cost* is at or above a configurable threshold (default $50) gets "⚠ LARGE" next to whatever the weekly flag already says. Editable in Settings under a new "Alerts" card. Migrates automatically for existing saved data (defaults to $50 if missing).
+
+---
+
+## [v1.8] — 2026-08-31
+### Changed
+- **Store tab renamed to "Sales vs Purchasing."** With only Central Phoenix left, a tab labeled with the store's name told you nothing about what was on it — every other tab (Order Guide, Compare Periods, Settings) already describes its function, so this one now matches. Label only; the store's actual name is unchanged everywhere else (Order Guide header, email subject line, Compare Periods).
+- **"Compare Stores" → "Compare Periods."** The old view showed one row per store's latest period — with one store, that's a single row and no longer a comparison of anything. Repurposed to show one row per *period* for Central Phoenix instead (Period 8, 9, 10...), so % accounted and unaccounted cost can be tracked trending over time. Verified live: Period 8 → Period 9 shows % accounted improving from 51% to 69%.
+
+---
+
+## [v1.7] — 2026-08-31
+### Added
+- **"Ending on-hand" card** on the Variance view, always visible (not gated behind clicking into the Week 4 tab) — Nick went looking for P9's ending count after closing it out and couldn't find it, since it previously only existed as Week 4's Count column. Not a new/separate field: it reads and writes the exact same `period.weeks[3][item.id].actualCount` data as Week 4's Count column, so editing either place updates both — there's one number, just two places to see and fix it. Verified live: editing a value here updates Week 4's Count column instantly, and vice versa.
+
+---
+
+## [v1.6] — 2026-08-31
+### Fixed
+- **Typing a multi-digit number into the Variance week table silently dropped every character after the first** (e.g. typing "49" into Count only ever saved "4"). Root cause: that table's inputs re-rendered the entire page on every keystroke (to recompute Accounted for/Unaccounted/Flag/Total live), which destroyed and rebuilt the very input being typed into, losing focus and the rest of the keystrokes. Switched from committing on `input` (every keystroke) to `change` (blur/Enter) — computed columns still update, just once you leave the field instead of mid-keystroke. Caught while entering Period 9's Week 4 physical count; the real counts (Coke 49, Diet Coke 43, Sprite 52, Dr Pepper 68, Root Beer 10, Lemonade 0) had to be entered directly rather than through the (at-the-time-still-buggy) UI.
+- **"+ New Period" carried a meaningless computed beginning inventory forward for order-only items.** Passport coffee/tea items never participate in the purchased-vs-accounted flow, but a purchase CSV can still incidentally match one of them (e.g. a broader MarginEdge report with a "Coffee, Whole Bean" line lands on the item now that it's tracked) — carrying that through `expectedOnHand` produced a stray, meaningless "beginning inventory" for an item that was never actually reconciled. `+ New Period` now skips order-only items when carrying forward. Period 10 (created same day) had this stray value stripped from its already-created `beginInv` directly, without touching the underlying Week 4 purchase record it came from — that's real purchase data (Nick did buy the coffee), just not one this tool tracks usage for.
+- Note for future CSV imports: since the 8 Passport items now exist in the tracked item list, a MarginEdge purchase report that includes coffee/tea lines will now match and fill their `purchased` field (previously "unmatched"). Harmless — order-only items never appear in the Variance table or feed any calculation — but worth knowing if a purchased number shows up somewhere unexpected.
+
+---
+
 ## [v1.5] — 2026-08-24
 ### Changed
 - **Removed the Gilbert and Scottsdale stores.** Both were always empty (no items, no data) — the tracker now covers Clever Koi Central Phoenix only. A migration (`pruneRemovedStores`) drops them from any browser's already-saved localStorage too, so old tabs don't linger.
